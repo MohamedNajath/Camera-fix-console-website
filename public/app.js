@@ -241,8 +241,8 @@
         '<td>' + siLabel(s.siId) + '</td>' +
         '<td class="mono">' + s.total + '</td>' +
         '<td><span class="badge warn"><span class="dot"></span>' + s.needsFix + '</span></td>' +
-        '<td class="mono">' + okCount + '</td>' +
-        '<td class="mono">' + pendingCount + '</td>' +
+        '<td><span class="badge ok"><span class="dot"></span>' + okCount + '</span></td>' +
+        '<td><span class="badge danger"><span class="dot"></span>' + pendingCount + '</span></td>' +
         '<td class="mono">&rarr;</td></tr>';
     }).join('');
 
@@ -791,7 +791,7 @@
   }
   function openPdfReport(selectedSiteKey) {
     var reportSites = selectedSiteKey ? siteList.filter(function (site) { return site.key === selectedSiteKey; }) : siteList;
-    if (selectedSiteKey && (!isAdmin() || !reportSites.length)) return;
+    if (selectedSiteKey && !reportSites.length) return;
     var reportCameraCount = reportSites.reduce(function (count, site) { return count + (sites[site.key] ? sites[site.key].rows.length : 0); }, 0);
     if (!reportCameraCount) { toast('There are no cameras to export'); return; }
     var popup = window.open('', '_blank');
@@ -816,7 +816,7 @@
     popup.document.open(); popup.document.write(report); popup.document.close();
   }
   $('exportSiPdfBtn').addEventListener('click', function () { if (!isAdmin()) openPdfReport(null); });
-  $('exportSitePdfBtn').addEventListener('click', function () { if (isAdmin() && currentSiteKey) openPdfReport(currentSiteKey); });
+  $('exportSitePdfBtn').addEventListener('click', function () { if (currentSiteKey && sites[currentSiteKey]) openPdfReport(currentSiteKey); });
 
   /* ------------------------------------------------------------------ */
   /* Boot                                                                */

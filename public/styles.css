@@ -134,6 +134,7 @@
   .badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:100px; white-space:nowrap; }
   .badge.ok{ background:var(--ok-soft); color:var(--ok); }
   .badge.warn{ background:var(--warn-soft); color:var(--warn); }
+  .badge.danger{ background:rgba(192,57,43,0.12); color:var(--danger); }
   .badge.pending{ background:var(--pending-soft); color:var(--pending); }
   .badge.neutral{ background:var(--neutral-soft); color:var(--neutral); }
   .badge .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
@@ -241,6 +242,9 @@
   }
   .pagination-info{ font-size:12px; color:var(--text-dim); }
   .pagination-btns{ display:flex; gap:8px; }
+  .pagination-btns .mini-btn{ background:#fff; border-color:#c7ced6; color:#26323d; }
+  .pagination-btns .mini-btn:hover:not(:disabled){ background:#f0f3f6; }
+  .pagination-btns .mini-btn:disabled{ background:#fff; color:#8a94a0; cursor:not-allowed; }
 
   /* ---------- Modal ---------- */
   .modal-overlay{
@@ -303,8 +307,8 @@
 .user-btn{ max-width:170px; overflow:hidden; text-overflow:ellipsis; }
 .link-btn{ background:none; border:none; color:var(--accent); font-size:12px; cursor:pointer; font-family:var(--font-body); padding:0; }
 
-.bell-btn{ position:relative; background:transparent; border:1px solid var(--border); color:var(--text-dim); border-radius:8px; width:38px; height:35px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-.bell-btn:hover{ background:var(--surface-2); color:var(--text); }
+.bell-btn{ position:relative; background:transparent; border:1px solid var(--warn); color:var(--warn); border-radius:8px; width:38px; height:35px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.bell-btn:hover{ background:var(--warn-soft); color:#8C4B00; }
 .bell-count{ position:absolute; top:-7px; right:-7px; min-width:18px; height:18px; padding:0 5px; border-radius:100px; background:var(--danger); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:var(--font-body); }
 .notif-panel{ width:360px; max-width:calc(100vw - 32px); }
 .pop-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border); font-family:var(--font-display); font-weight:600; font-size:14px; }
