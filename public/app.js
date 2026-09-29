@@ -731,14 +731,18 @@
       '<div class="issues"><b>Current issues:</b> ' + esc(issues.length ? issues.join(', ') : 'None') + '</div>' +
       '<h4>Update history</h4><ol>' + historyHtml + '</ol></article>';
   }
-  $('exportSiPdfBtn').addEventListener('click', function () {
-    if (isAdmin()) return;
-    if (!ROWS.length) { toast('There are no assigned cameras to export'); return; }
+  function openPdfReport(selectedSiteKey) {
+    var reportSites = selectedSiteKey ? siteList.filter(function (site) { return site.key === selectedSiteKey; }) : siteList;
+    if (selectedSiteKey && (!isAdmin() || !reportSites.length)) return;
+    var reportCameraCount = reportSites.reduce(function (count, site) { return count + (sites[site.key] ? sites[site.key].rows.length : 0); }, 0);
+    if (!reportCameraCount) { toast('There are no cameras to export'); return; }
     var popup = window.open('', '_blank');
     if (!popup) { toast('Allow popups to create the SI report'); return; }
     var generated = new Date();
-    var title = 'SI camera report - ' + ME.name + ' - ' + generated.toISOString().slice(0, 10);
-    var sections = siteList.map(function (site) {
+    var singleSite = !!selectedSiteKey;
+    var reportSite = singleSite ? reportSites[0] : null;
+    var title = (singleSite ? 'Camera site report - ' + reportSite.name : 'SI camera report - ' + ME.name) + ' - ' + generated.toISOString().slice(0, 10);
+    var sections = reportSites.map(function (site) {
       var siteData = sites[site.key];
       return '<section class="site"><h2>' + esc(site.name) + '</h2>' +
         (site.category ? '<p class="category">' + esc(site.category) + '</p>' : '') +
@@ -747,12 +751,14 @@
     var report = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>' + esc(title) + '</title><style>' +
       'body{font:12px/1.45 Arial,sans-serif;color:#17202b;margin:28px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0}h3{font-size:14px;margin:0 0 8px;overflow-wrap:anywhere}h4{font-size:12px;margin:12px 0 4px}.meta,.category{color:#57616d}.summary{display:flex;gap:24px;margin:18px 0;padding:12px 0;border-block:1px solid #cbd2d9}.site{margin:24px 0}.site h2{border-bottom:2px solid #0f6db0;padding-bottom:6px}.category{margin:4px 0 10px}.camera{border:1px solid #d8dee4;border-radius:4px;padding:12px;margin:10px 0;break-inside:avoid}.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px}.fact-id,.fact-model,.fact-workflow,.fact-firmware{grid-column:1}.fact-status{grid-column:2}.facts b{margin-right:4px}.status-badge{display:inline-block;padding:1px 7px;border:1px solid;border-radius:4px;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}.status-ok{color:#146c43;background:#e8f5ec;border-color:#a8d5b6}.status-needs-fix{color:#a52834;background:#fce8e8;border-color:#efb5b9}.status-waiting{color:#925000;background:#fff0d6;border-color:#edca8d}.status-neutral{color:#57616d;background:#eef1f4;border-color:#d8dee4}.issues{margin-top:8px}.camera ol{margin:4px 0;padding-left:20px}.camera li{margin:5px 0;break-inside:avoid}.camera li div{margin-left:4px;color:#57616d}.empty{padding:24px 0;color:#57616d}@page{size:auto;margin:15mm}@media print{body{margin:0}.site{break-before:auto}.camera{break-inside:avoid}}' +
-      '</style></head><body><h1>SI Camera Update Report</h1><div class="meta">' + esc(ME.name) + ' · Generated ' + esc(generated.toLocaleString()) + '</div>' +
-      '<div class="summary"><span><b>Assigned sites:</b> ' + siteList.length + '</span><span><b>Cameras:</b> ' + ROWS.length + '</span></div>' +
+      '</style></head><body><h1>' + (singleSite ? 'Camera Site Report' : 'SI Camera Update Report') + '</h1><div class="meta">' + esc(ME.name) + ' · Generated ' + esc(generated.toLocaleString()) + '</div>' +
+      '<div class="summary">' + (singleSite ? '<span><b>Site:</b> ' + esc(reportSite.name) + '</span>' : '<span><b>Assigned sites:</b> ' + reportSites.length + '</span>') + '<span><b>Cameras:</b> ' + reportCameraCount + '</span></div>' +
       (sections || '<p class="empty">No assigned sites</p>') +
       '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},250)})<\/script></body></html>';
     popup.document.open(); popup.document.write(report); popup.document.close();
-  });
+  }
+  $('exportSiPdfBtn').addEventListener('click', function () { if (!isAdmin()) openPdfReport(null); });
+  $('exportSitePdfBtn').addEventListener('click', function () { if (isAdmin() && currentSiteKey) openPdfReport(currentSiteKey); });
 
   /* ------------------------------------------------------------------ */
   /* Boot                                                                */
