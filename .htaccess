@@ -1,0 +1,7 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^(?:config(?:\.example)?\.php|schema\.sql)$ - [F,L,NC]
+RewriteRule ^(?:data|seed|source-data|tools)(?:/|$) - [F,L,NC]
+</IfModule>

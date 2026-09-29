@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera Fix Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginView" hidden>
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <div class="brand" style="margin-bottom:18px;"><span class="brand-dot"></span><span class="brand-name">Camera Fix Console</span></div>
+    <h1 class="login-title">Sign in</h1>
+    <label class="field"><span>Username</span><input type="text" id="loginUser" autocomplete="username" required autofocus></label>
+    <label class="field" style="margin-top:12px;"><span>Password</span><input type="password" id="loginPass" autocomplete="current-password" required></label>
+    <p class="login-error" id="loginError" role="alert"></p>
+    <button class="tb-btn" type="submit" id="loginBtn" style="width:100%;margin-top:6px;">Sign in</button>
+    <p class="login-hint">Accounts are created by the administrator.</p>
+  </form>
+</div>
+
+<!-- APP -->
+<div id="appRoot" hidden>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" id="brandHome" style="cursor:pointer;">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Camera Fix Console</span>
+      </div>
+      <div class="search-wrap">
+        <div class="search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="searchInput" type="text" placeholder="Search a site name…" autocomplete="off">
+        </div>
+        <div class="suggest-panel" id="suggestPanel"></div>
+      </div>
+      <div class="topbar-actions">
+        <button class="tb-btn admin-only" id="addCameraBtn" hidden>+ Add camera</button>
+        <button class="tb-btn ghost admin-only" id="usersBtn" hidden>SI accounts</button>
+        <button class="tb-btn ghost" id="exportExcelBtn">Download Excel</button>
+        <button class="tb-btn ghost si-only" id="exportSiPdfBtn" hidden>SI report PDF</button>
+        <div class="pop-wrap" id="bellWrap" hidden>
+          <button class="bell-btn" id="bellBtn" aria-label="Messages">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            <span class="bell-count" id="bellCount" hidden>0</span>
+          </button>
+          <div class="pop-panel notif-panel" id="notifPanel">
+            <div class="pop-head"><span>Messages</span><button class="link-btn" id="markAllRead">Clear all</button></div>
+            <div id="notifList"></div>
+          </div>
+        </div>
+        <div class="pop-wrap">
+          <button class="tb-btn ghost user-btn" id="userBtn"><span id="userLabel"></span></button>
+          <div class="pop-panel user-panel" id="userPanel">
+            <div class="user-panel-name" id="userPanelName"></div>
+            <button class="pop-item" id="changePwBtn">Change password</button>
+            <button class="pop-item" id="logoutBtn">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shell">
+
+    <!-- OVERVIEW -->
+    <div class="view active" id="viewOverview">
+      <div class="hero">
+        <h1 id="heroTitle"></h1>
+        <p id="heroText"></p>
+      </div>
+      <div class="section-title">At a glance</div>
+      <div class="stat-grid" id="overviewStats"></div>
+      <div class="section-title admin-only" id="allSitesTitle" hidden>All sites</div>
+      <div class="table-wrap admin-only" id="allSitesWrap" hidden>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Site</th><th>Category</th><th>Assigned SI</th><th>Cameras</th><th>Needs fix</th><th>Confirmed OK</th><th>Pending check</th><th></th></tr></thead>
+          <tbody id="allSitesBody"></tbody>
+        </table></div>
+        <div class="pagination-bar" id="allSitesPagination"></div>
+      </div>
+      <div class="section-title" id="topIssuesTitle">Sites with the most open issues</div>
+      <div class="table-wrap"><div class="table-scroll"><table>
+        <thead><tr><th>Site</th><th>Category</th><th class="admin-only" hidden>SI</th><th>Cameras</th><th>Needs fix</th><th></th></tr></thead>
+        <tbody id="topIssuesBody"></tbody>
+      </table></div></div>
+      <div class="empty-state" id="noSitesMsg" hidden>
+        <h3>No sites assigned yet</h3>
+        <p>The administrator hasn't assigned any sites to your account. Check back soon.</p>
+      </div>
+    </div>
+
+    <!-- SEARCH RESULTS -->
+    <div class="view" id="viewResults">
+      <div class="section-title" style="margin-top:28px;" id="resultsTitle">Matching sites</div>
+      <div class="assign-bar admin-only" id="assignBar" hidden>
+        <span id="assignCount"></span>
+        <select id="assignSelect"></select>
+        <button class="tb-btn" id="assignBtn">Assign selected</button>
+      </div>
+      <div class="table-wrap"><div class="table-scroll"><table>
+        <thead><tr><th class="admin-only" hidden><input type="checkbox" id="resultsCheckAll" aria-label="Select all"></th><th>Site</th><th>Category</th><th class="admin-only" hidden>SI</th><th>Cameras</th><th>Needs fix</th><th></th></tr></thead>
+        <tbody id="resultsBody"></tbody>
+      </table></div></div>
+    </div>
+
+    <!-- SITE -->
+    <div class="view" id="viewSite">
+      <div class="back-row"><button class="back-btn" id="backBtn">&larr; Back to overview</button></div>
+      <div class="site-head">
+        <div class="site-path" id="sitePath"></div>
+        <div class="site-name" id="siteName"></div>
+        <div class="site-count" id="siteCount"></div>
+        <div class="site-contact" id="siteContact"></div>
+        <div class="si-assign" id="siAssign"></div>
+      </div>
+      <div class="stat-grid" id="siteStats" style="margin-top:20px;"></div>
+      <div id="issueSection">
+        <div class="section-title">Outstanding fixes by type</div>
+        <div id="issueBars"></div>
+      </div>
+      <div class="section-title">Cameras on this site</div>
+      <div class="filter-row" id="statusFilters"></div>
+      <div class="table-wrap"><div class="table-scroll"><table>
+        <thead><tr>
+          <th>Channel</th><th>Status</th><th>SI Status</th><th>Category</th><th>Type</th><th>Model</th><th>Firmware</th><th>Details</th><th>Remark 2</th><th class="admin-only" hidden></th>
+        </tr></thead>
+        <tbody id="cameraBody"></tbody>
+      </table></div></div>
+      <div class="add-row-card admin-only" id="addCameraToSite" hidden>+ Add another camera to this site</div>
+    </div>
+
+    <!-- SI ACCOUNTS (admin) -->
+    <div class="view" id="viewUsers">
+      <div class="back-row"><button class="back-btn" id="usersBack">&larr; Back to overview</button></div>
+      <div class="section-title" style="margin-top:22px;">Create an SI account</div>
+      <div class="panel-card">
+        <div class="field-grid">
+          <label class="field"><span>Full name / company</span><input type="text" id="nuName" maxlength="80" placeholder="e.g. Ahmed Ali — Gulf Systems"></label>
+          <label class="field"><span>Username</span><input type="text" id="nuUser" maxlength="32" placeholder="e.g. ahmed.si" autocomplete="off"></label>
+          <label class="field field-wide"><span>Password (min 8 characters)</span>
+            <div class="inline-row"><input type="text" id="nuPass" maxlength="128" autocomplete="off" style="flex:1;"><button class="tb-btn ghost" type="button" id="nuGen">Generate</button></div>
+          </label>
+        </div>
+        <p class="login-error" id="nuError" role="alert"></p>
+        <button class="tb-btn" id="nuCreate">Create account</button>
+        <div class="created-box" id="createdBox" hidden></div>
+      </div>
+      <div class="section-title">SI accounts</div>
+      <div class="table-wrap"><div class="table-scroll"><table>
+        <thead><tr><th>Name</th><th>Username</th><th>Sites assigned</th><th>Cameras</th><th></th></tr></thead>
+        <tbody id="usersBody"></tbody>
+      </table></div></div>
+    </div>
+
+    <!-- NO RESULTS -->
+    <div class="view" id="viewEmpty">
+      <div class="empty-state">
+        <h3>No site matches "<span id="emptyQuery"></span>"</h3>
+        <p>Try a shorter or different part of the name, or <span class="reset-link" id="emptyReset">go back to the overview</span>.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD / EDIT CAMERA MODAL (admin) -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-card">
+    <div class="modal-head"><div class="modal-title" id="modalTitle">Add camera</div><button class="modal-close" id="modalClose" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div class="field-grid">
+        <label class="field field-wide"><span>Site name *</span><input type="text" id="fSite" list="siteDatalist" maxlength="200"><datalist id="siteDatalist"></datalist></label>
+        <label class="field field-wide"><span>Category path</span><input type="text" id="fCategory" maxlength="200" placeholder="e.g. Signal Tower / POI"></label>
+        <label class="field field-wide"><span>Channel name *</span><input type="text" id="fChannel" maxlength="300"></label>
+        <label class="field"><span>Channel category</span><select id="fChCategory"><option value=""></option><option>IPC</option><option>ITC</option><option>SD</option><option>NVR</option><option>HCSDK</option></select></label>
+        <label class="field"><span>Camera type</span><input type="text" id="fCamType" maxlength="100"></label>
+        <label class="field"><span>Model</span><input type="text" id="fModel" maxlength="100"></label>
+        <label class="field"><span>IP address</span><input type="text" id="fIp" maxlength="64"></label>
+        <label class="field"><span>Firmware version</span><input type="text" id="fFw" maxlength="100"></label>
+        <label class="field"><span>Software version</span><input type="text" id="fSwVer" maxlength="100"></label>
+        <label class="field field-wide"><span>SI (contractor) name</span><input type="text" id="fIntegrator" maxlength="100"></label>
+      </div>
+      <div class="field" style="margin-top:14px;"><span>Status &amp; issues</span><div class="issue-check-grid" id="issueCheckGrid"></div></div>
+      <label class="field" style="margin-top:12px;"><span>Remark / notes</span><textarea id="fRemark" rows="2" maxlength="500"></textarea></label>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn danger" id="modalDelete" hidden>Delete camera</button>
+      <div style="flex:1;"></div>
+      <button class="tb-btn ghost" id="modalCancel">Cancel</button>
+      <button class="tb-btn" id="modalSave">Save camera</button>
+    </div>
+  </div>
+</div>
+
+<!-- NOT FIXED MODAL (admin) -->
+<div class="modal-overlay" id="rejectModalOverlay">
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head"><div class="modal-title">What's still wrong?</div><button class="modal-close" id="rejectModalClose" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <p class="modal-help">Select the issue(s) still present. This shows as Remark 2 and sends a message to the SI. It does not change the Excel sheet.</p>
+      <div class="issue-check-grid" id="rejectIssueGrid"></div>
+      <label class="field" style="margin-top:14px;"><span>Message to SI (optional)</span><textarea id="rejectNote" rows="2" maxlength="300" placeholder="e.g. Please re-aim the camera at the gate lane"></textarea></label>
+    </div>
+    <div class="modal-foot"><div style="flex:1;"></div><button class="tb-btn ghost" id="rejectModalCancel">Cancel</button><button class="tb-btn" id="rejectModalConfirm">Send back to SI</button></div>
+  </div>
+</div>
+
+<!-- PASSWORD MODAL -->
+<div class="modal-overlay" id="pwOverlay">
+  <div class="modal-card" style="max-width:420px;">
+    <div class="modal-head"><div class="modal-title" id="pwTitle">Change password</div><button class="modal-close" id="pwClose" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <label class="field" id="pwCurrentWrap"><span>Current password</span><input type="password" id="pwCurrent" autocomplete="current-password"></label>
+      <label class="field" style="margin-top:12px;"><span id="pwNewLabel">New password (min 8 characters)</span><input type="text" id="pwNew" autocomplete="new-password" maxlength="128"></label>
+      <p class="login-error" id="pwError" role="alert"></p>
+    </div>
+    <div class="modal-foot"><div style="flex:1;"></div><button class="tb-btn ghost" id="pwCancel">Cancel</button><button class="tb-btn" id="pwSave">Save password</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js?v=2026-09-29-pdf-status-right-only"></script>
+</body>
+</html>

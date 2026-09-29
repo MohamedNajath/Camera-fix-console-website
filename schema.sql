@@ -1,0 +1,73 @@
+CREATE TABLE IF NOT EXISTS app_meta (
+  id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+  revision BIGINT UNSIGNED NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO app_meta (id, revision) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS cameras (
+  sort_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE,
+  id VARCHAR(200) NOT NULL PRIMARY KEY,
+  channel VARCHAR(300) NOT NULL DEFAULT '',
+  place VARCHAR(200) NOT NULL DEFAULT '',
+  category VARCHAR(200) NOT NULL DEFAULT '',
+  organization VARCHAR(500) NOT NULL DEFAULT '',
+  chCategory VARCHAR(40) NOT NULL DEFAULT '',
+  camType VARCHAR(100) NOT NULL DEFAULT '',
+  model VARCHAR(100) NOT NULL DEFAULT '',
+  ip VARCHAR(64) NOT NULL DEFAULT '',
+  lon VARCHAR(64) NOT NULL DEFAULT '',
+  lat VARCHAR(64) NOT NULL DEFAULT '',
+  swVer VARCHAR(100) NOT NULL DEFAULT '',
+  fw VARCHAR(100) NOT NULL DEFAULT '',
+  integrator VARCHAR(100) NOT NULL DEFAULT '',
+  remark VARCHAR(500) NOT NULL DEFAULT '',
+  issues LONGTEXT NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'No Data',
+  activity LONGTEXT NOT NULL,
+  siContactName VARCHAR(200) NOT NULL DEFAULT '',
+  siContactMobile VARCHAR(100) NOT NULL DEFAULT '',
+  siContactEmail VARCHAR(200) NOT NULL DEFAULT '',
+  KEY idx_cameras_place (place),
+  KEY idx_cameras_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(32) NOT NULL PRIMARY KEY,
+  username VARCHAR(64) NOT NULL UNIQUE,
+  name VARCHAR(80) NOT NULL,
+  role ENUM('admin', 'si') NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  session_version INT UNSIGNED NOT NULL DEFAULT 0,
+  KEY idx_users_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS assignments (
+  site_key VARCHAR(200) NOT NULL PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL,
+  KEY idx_assignments_user (user_id),
+  CONSTRAINT fk_assignments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id VARCHAR(32) NOT NULL PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL,
+  camera_id VARCHAR(200) NOT NULL,
+  channel VARCHAR(300) NOT NULL DEFAULT '',
+  site VARCHAR(200) NOT NULL DEFAULT '',
+  issues LONGTEXT NOT NULL,
+  note VARCHAR(300) NOT NULL DEFAULT '',
+  by_name VARCHAR(80) NOT NULL DEFAULT '',
+  created_at VARCHAR(32) NOT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  KEY idx_notifications_user_time (user_id, created_at),
+  KEY idx_notifications_unread (user_id, is_read),
+  CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  ip_hash CHAR(64) NOT NULL PRIMARY KEY,
+  attempt_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  window_started BIGINT UNSIGNED NOT NULL,
+  blocked_until BIGINT UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
