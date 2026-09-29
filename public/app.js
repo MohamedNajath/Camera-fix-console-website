@@ -2,6 +2,29 @@
   'use strict';
 
   /* ------------------------------------------------------------------ */
+  function setTheme(theme, persist) {
+    var dark = theme === 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    if (persist) {
+      try { localStorage.setItem('camera-fix-console-theme', dark ? 'dark' : 'light'); } catch (e) {}
+    }
+    var target = dark ? 'light' : 'dark';
+    $('themeBtn').setAttribute('aria-label', 'Switch to ' + target + ' theme');
+    $('themeBtn').setAttribute('title', 'Switch to ' + target + ' theme');
+    $('themeBtn').setAttribute('aria-pressed', String(dark));
+    $('themeIcon').innerHTML = dark
+      ? '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>'
+      : '<path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"></path>';
+  }
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem('camera-fix-console-theme'); } catch (e) {}
+  var initialTheme = savedTheme === 'light' || savedTheme === 'dark'
+    ? savedTheme
+    : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  setTheme(initialTheme, false);
+  $('themeBtn').addEventListener('click', function () {
+    setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark', true);
+  });
   /* Constants + tiny helpers                                            */
   /* ------------------------------------------------------------------ */
   var ISSUE_TYPES = ["Require Fine Tuning", "Require Appropriate Backlight Option", "Require Zoom Out", "Require Appropriate Min Size", "Require Zoom In", "Require Tilt Down", "Require Tilt Up", "Pin Hole Cam", "Require Appropriate Detection Area", "Require Tilt Left", "Require Tilt Right", "Offline", "Temporarily camera removed", "Straight the Camera", "FIX CAMERA ALLIGNMENT", "REMOVE TARGET BOX OVERLAY", "LAST CAPTURE ON 06-09,CHECK CAMERA", "CAPTURES MISSING", "CHECK CAMERA HEIGHT IS AS INSTRUCTED", "fix camera alignment", "CAPTURES ARE NOT RECOGNISABLE FIX THE ISSUE", "REMOVE OBSTRUCTION", "FIX TARGET AREA", "OBSTRUCTION INFRONT OF CAMERA", "FIX THE TARGET AREA", "CHECK THE CAMERA HEIGHT IS AS INSTRUCTED", "fix camera alignment,captures missing", "CHECK CAMERA ALIGNMENT", "NO CAPTURES TILL NOW", "LAST CAPTURE IS ON 02-09", "CAPTURES ARE NOT CLEAR,CLEAN THE LENS", "CLEAN THE LENS", "SOME REFLECTIONS SEEING IN CAMERA,CLEAR IT"];
@@ -119,7 +142,12 @@
       sites[k].rows.push(r);
     });
     siteList = Object.keys(sites).map(function (k) {
-      var s = sites[k], t = { key: k, name: s.name, category: s.category, total: s.rows.length, needsFix: 0, ok: 0, noData: 0, pending: 0, siId: ASSIGN[k] || null };
+      var s = sites[k], siNames = [], t;
+      s.rows.forEach(function (r) {
+        var name = String(get(r, 'integrator') || '').trim();
+        if (name && !siNames.some(function (existing) { return existing.toLowerCase() === name.toLowerCase(); })) siNames.push(name);
+      });
+      t = { key: k, name: s.name, category: s.category, siNames: siNames, total: s.rows.length, needsFix: 0, ok: 0, noData: 0, pending: 0, siId: ASSIGN[k] || null };
       s.rows.forEach(function (r) {
         var st = get(r, 'status');
         if (st === 'Needs Fix') t.needsFix++; else if (st === 'OK') t.ok++; else t.noData++;
@@ -311,15 +339,21 @@
   var searchInput = $('searchInput'), suggestPanel = $('suggestPanel'), activeIndex = -1;
   function matchSites(q) {
     q = q.trim().toLowerCase(); if (!q) return [];
-    var a = [], b = [];
-    siteList.forEach(function (s) { var i = s.name.toLowerCase().indexOf(q); if (i === 0) a.push(s); else if (i > 0) b.push(s); });
-    return a.concat(b);
+    var startsWithSite = [], containsSite = [], matchesSI = [];
+    siteList.forEach(function (s) {
+      var siteIndex = s.name.toLowerCase().indexOf(q);
+      var siMatch = (s.siNames || []).some(function (name) { return name.toLowerCase().indexOf(q) > -1; });
+      if (siteIndex === 0) startsWithSite.push(s);
+      else if (siteIndex > 0) containsSite.push(s);
+      else if (siMatch) matchesSI.push(s);
+    });
+    return startsWithSite.concat(containsSite, matchesSI);
   }
   searchInput.addEventListener('input', function () {
     var m = matchSites(searchInput.value).slice(0, 8);
     if (!m.length) { suggestPanel.classList.remove('open'); suggestPanel.innerHTML = ''; return; }
     suggestPanel.innerHTML = m.map(function (s) {
-      return '<div class="suggest-item" data-key="' + esc(s.key) + '"><div><div class="suggest-name">' + esc(s.name) + '</div><div class="suggest-path">' + esc(s.category) + '</div></div>' +
+      return '<div class="suggest-item" data-key="' + esc(s.key) + '"><div><div class="suggest-name">' + esc(s.name) + '</div><div class="suggest-path">' + esc(s.category) + (s.siNames && s.siNames.length ? ' · SI: ' + esc(s.siNames.slice(0, 2).join(', ')) : '') + '</div></div>' +
         '<div class="suggest-meta">' + s.total + ' cam' + (s.total === 1 ? '' : 's') + (s.needsFix ? ' · ' + s.needsFix + ' to fix' : '') + '</div></div>';
     }).join('');
     suggestPanel.classList.add('open'); activeIndex = -1;
@@ -413,11 +447,12 @@
     $('siteCount').textContent = total + ' camera' + (total === 1 ? '' : 's') + ' on this site';
 
     var siteContact = '';
-    var contactRow = s.rows.find(function (r) { return get(r, 'siContactName') || get(r, 'siContactMobile') || get(r, 'siContactEmail'); });
-    if (contactRow) {
-      var name = get(contactRow, 'siContactName');
-      var mobile = get(contactRow, 'siContactMobile');
-      var email = get(contactRow, 'siContactEmail');
+    var contractorRow = s.rows.find(function (r) { return get(r, 'integrator'); });
+    var contactRow = s.rows.find(function (r) { return get(r, 'siContactMobile') || get(r, 'siContactEmail'); });
+    if (contractorRow || contactRow) {
+      var name = contractorRow ? get(contractorRow, 'integrator') : '';
+      var mobile = contactRow ? get(contactRow, 'siContactMobile') : '';
+      var email = contactRow ? get(contactRow, 'siContactEmail') : '';
       var parts = [];
       if (name) parts.push('SI Name: ' + name);
       if (mobile) parts.push('Phone: ' + mobile);

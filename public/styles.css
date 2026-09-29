@@ -14,26 +14,26 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#0B0F14; --surface:#121820; --surface-2:#1A222C; --border:#28323D;
-      --text:#E7EDF3; --text-dim:#9AA5B1; --text-faint:#69737F;
-      --accent:#4FA8E0; --accent-soft:#132836;
+      --bg:#09182B; --surface:#10243A; --surface-2:#172E49; --border:#2A4462;
+      --text:#E8F1FF; --text-dim:#B0C1D8; --text-faint:#8399B6;
+      --accent:#59B4F2; --accent-soft:#163650;
       --ok:#3ED598; --ok-soft:#12261E;
       --warn:#F0A83D; --warn-soft:#2B2010;
       --pending:#F5D33D; --pending-soft:#332B0A;
       --danger:#FF7A6B;
-      --neutral:#8A94A0; --neutral-soft:#1B222B;
+      --neutral:#9AABC1; --neutral-soft:#202F43;
       --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
     }
   }
   :root[data-theme="dark"]{
-    --bg:#0B0F14; --surface:#121820; --surface-2:#1A222C; --border:#28323D;
-    --text:#E7EDF3; --text-dim:#9AA5B1; --text-faint:#69737F;
-    --accent:#4FA8E0; --accent-soft:#132836;
+    --bg:#09182B; --surface:#10243A; --surface-2:#172E49; --border:#2A4462;
+    --text:#E8F1FF; --text-dim:#B0C1D8; --text-faint:#8399B6;
+    --accent:#59B4F2; --accent-soft:#163650;
     --ok:#3ED598; --ok-soft:#12261E;
     --warn:#F0A83D; --warn-soft:#2B2010;
     --pending:#F5D33D; --pending-soft:#332B0A;
       --danger:#FF7A6B;
-    --neutral:#8A94A0; --neutral-soft:#1B222B;
+    --neutral:#9AABC1; --neutral-soft:#202F43;
     --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
   }
 
@@ -178,6 +178,7 @@
   }
   .site-contact-label{ font-weight:600; color:var(--text); }
   .site-contact-value{ color:var(--text-dim); }
+  .site-export-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 
   .issue-breakdown{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
   .issue-bar-row{ display:flex; align-items:center; gap:10px; padding:7px 0; }
