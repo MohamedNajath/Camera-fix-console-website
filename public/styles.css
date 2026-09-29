@@ -215,6 +215,10 @@
   .tb-btn.ghost:hover{ background:var(--surface-2); color:var(--text); }
   .tb-btn.danger{ background:transparent; border-color:var(--warn); color:var(--warn); }
   .tb-btn.danger:hover{ background:var(--warn-soft); }
+  .tb-btn.site-pdf-btn{ background:var(--ok); border-color:var(--ok); color:#fff; }
+  .tb-btn.site-pdf-btn:hover{ background:var(--ok); filter:brightness(.92); }
+  .tb-btn.site-excel-btn{ background:var(--warn); border-color:var(--warn); color:#fff; }
+  .tb-btn.site-excel-btn:hover{ background:var(--warn); filter:brightness(.92); }
   @media (max-width:900px){ .tb-btn span.full{ display:none; } }
 
   .row-actions{ display:flex; gap:6px; }

@@ -8,7 +8,7 @@ work.
 ## Requirements
 
 - XAMPP with Apache and MySQL running.
-- PHP 8.1 or later with `pdo_mysql` enabled.
+- PHP 8.1 or later with `pdo_mysql`, `zip`, and DOM/XML enabled.
 - MySQL 8 or MariaDB 10.4 or later.
 
 No Node.js or npm installation is required. The browser interface uses
@@ -55,6 +55,17 @@ HTTPS.
 
 MySQL stores live cameras, accounts, assignments, notifications, and fix
 history. The JSON files in `data/` are retained as the one-time import source.
-The admin verifies SI-marked fixes; only an admin's **Verified OK** action
-changes the camera status to OK. The **Download Excel** action exports the
-cameras visible to the signed-in account.
+To add cameras from a separate same-structure workbook, sign in as admin and
+click **Import new cameras**. Select the `.xlsx` file and review the preview of
+new camera IDs and sites. Confirm to import; IDs already in MySQL are skipped,
+and new rows are appended to the master workbook. Newly imported sites start
+unassigned and can then be assigned to an SI from the site page. Keep the
+master workbook closed in Excel while importing.
+When an admin verifies a fix, the source workbook is updated by camera ID with
+the final status and date. Each admin refix response fills the next Remark 2,
+Remark 3, or Remark 4 field and its date; further responses are appended to
+Remark 4. Keep `source-data/camera-fix-register.xlsx` closed in Excel while
+admin verification actions run. If the workbook cannot be updated, the action
+is rejected and the database change is rolled back. **Download Excel** exports
+the cameras visible to the signed-in account using the same status and remark
+columns.

@@ -76,6 +76,17 @@
       });
     });
   }
+  function apiWorkbookUpload(url, file) {
+    var form = new FormData(); form.append('workbook', file);
+    var endpoint = 'api.php?path=' + encodeURIComponent(url);
+    return fetch(endpoint, { method: 'POST', body: form, credentials: 'same-origin' }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (res.status === 401) { showLogin(); throw new Error('Please sign in'); }
+        if (!res.ok) throw new Error(data.error || 'Workbook import failed');
+        return data;
+      });
+    });
+  }
   function applyRev(r) { if (r && r.prevRev === REV) REV = r.rev; }
   function fail(e) { if (e && e.message !== 'Please sign in') toast(e.message || 'Something went wrong'); }
 
@@ -678,11 +689,25 @@
   /* ------------------------------------------------------------------ */
   /* Excel export (rows visible to this user)                            */
   /* ------------------------------------------------------------------ */
-  var HEADERS = ['Extreme Channel Code','AFR Code','Channel Name','Comment 1','Comment 2','Comment 3','Comment 4','remark','System Integrator','Channel Category','Camera Type','Latust firmware Version','Firmware Updated or Not','Model','Longitude','Latitude','Software Version','Organization','SI Name','SI Contact Person Name','SI Contact Person Mobile Number','Email Id'];
+  var HEADERS = ['Extreme Channel Code','AFR Code','Channel Name','Final Status','Comment 1','Comment 2','Comment 3','Comment 4','Date','Remark 2','Date','Remark 3','Date','Remark 4','Remark 4 Date','System Integrator','Channel Category','Camera Type','Latust firmware Version','Firmware Updated or Not','Model','Longitude','Latitude','Software Version','Organization','SI Name','SI Contact Person Name','SI Contact Person Mobile Number','Email Id'];
+  function excelDate(iso) {
+    if (!iso) return '';
+    var date = new Date(iso);
+    return isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 19).replace('T', ' ');
+  }
   function excelRow(r) {
-    var issues = get(r, 'issues') || [], c = ['', '', '', ''];
-    if (get(r, 'status') === 'OK') c[0] = 'OK'; else issues.slice(0, 4).forEach(function (x, i) { c[i] = x; });
-    return [get(r, 'id'), '', get(r, 'channel'), c[0], c[1], c[2], c[3], get(r, 'remark'), '', get(r, 'chCategory'), get(r, 'camType'), get(r, 'fw'), '', get(r, 'model'), get(r, 'lon'), get(r, 'lat'), get(r, 'swVer'), get(r, 'organization'), get(r, 'integrator'), get(r, 'siContactName'), get(r, 'siContactMobile'), get(r, 'siContactEmail')];
+    var issues = get(r, 'issues') || [], c = ['', '', '', ''], history = activityOf(r);
+    issues.slice(0, 4).forEach(function (issue, i) { c[i] = issue; });
+    var verified = history.filter(function (item) { return item.a === 'CHECK_OK'; });
+    var rejected = history.filter(function (item) { return item.a === 'CHECK_NOTOK'; });
+    var remarks = ['', '', ''], remarkDates = ['', '', ''];
+    rejected.forEach(function (item, index) {
+      var slot = Math.min(index, 2), text = (item.issues || []).join(', ');
+      if (item.note) text += (text ? ' - ' : '') + item.note;
+      remarks[slot] += (remarks[slot] ? '\n' : '') + text;
+      remarkDates[slot] += (remarkDates[slot] ? '\n' : '') + excelDate(item.t);
+    });
+    return [get(r, 'id'), '', get(r, 'channel'), get(r, 'status') === 'OK' ? 'OK' : '', c[0], c[1], c[2], c[3], excelDate(verified.length ? verified[verified.length - 1].t : ''), remarks[0], remarkDates[0], remarks[1], remarkDates[1], remarks[2], remarkDates[2], '', get(r, 'chCategory'), get(r, 'camType'), get(r, 'fw'), '', get(r, 'model'), get(r, 'lon'), get(r, 'lat'), get(r, 'swVer'), get(r, 'organization'), get(r, 'integrator'), get(r, 'siContactName'), get(r, 'siContactMobile'), get(r, 'siContactEmail')];
   }
   function loadSheetJS() {
     return new Promise(function (resolve, reject) {
@@ -692,15 +717,48 @@
       document.head.appendChild(s);
     });
   }
-  $('exportExcelBtn').addEventListener('click', function () {
+  function downloadExcel(rows, filename) {
+    if (!rows || !rows.length) { toast('There are no cameras to export'); return; }
     toast('Preparing your Excel file…');
     loadSheetJS().then(function () {
-      var aoa = [HEADERS].concat(ROWS.map(excelRow));
+      var aoa = [HEADERS].concat(rows.map(excelRow));
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Sheet1');
-      XLSX.writeFile(wb, 'camera-fix-register_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      XLSX.writeFile(wb, filename + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
       toast('Excel file downloaded');
     }).catch(fail);
+  }
+  $('exportExcelBtn').addEventListener('click', function () {
+    downloadExcel(ROWS, 'camera-fix-register');
+  });
+  $('exportSiteExcelBtn').addEventListener('click', function () {
+    var site = sites[currentSiteKey];
+    if (!isAdmin() || !site) return;
+    var filename = 'camera-fix-register_' + site.name.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+    downloadExcel(site.rows, filename);
+  });
+  $('importWorkbookBtn').addEventListener('click', function () {
+    $('workbookImportFile').click();
+  });
+  $('workbookImportFile').addEventListener('change', function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    apiWorkbookUpload('/api/workbook/import-preview', file).then(function (preview) {
+      if (!preview.cameras) {
+        toast(preview.duplicateIds ? 'No new camera IDs found; existing cameras were not reimported' : 'No new cameras found in the selected workbook');
+        return;
+      }
+      var sitesToImport = Object.keys(preview.sites || {});
+      var siteSummary = sitesToImport.slice(0, 12).map(function (name) { return name + ' (' + preview.sites[name] + ')'; }).join('\n');
+      if (sitesToImport.length > 12) siteSummary += '\n…and ' + (sitesToImport.length - 12) + ' more sites';
+      var message = 'Import ' + preview.cameras + ' new cameras across ' + sitesToImport.length + ' sites?\n\n' + siteSummary +
+        '\n\nExisting camera IDs will be skipped. New rows will be appended to the master workbook. New sites will be unassigned until you assign an SI.';
+      if (!window.confirm(message)) return;
+      return apiWorkbookUpload('/api/workbook/import', file).then(function (result) {
+        toast('Imported ' + result.added + ' cameras across ' + Object.keys(result.sites || {}).length + ' sites');
+        return loadAll(false);
+      });
+    }).catch(fail).then(function () { $('workbookImportFile').value = ''; });
   });
 
   function activityLabel(item) {

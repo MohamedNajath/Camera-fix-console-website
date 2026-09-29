@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config.php';
+require_once dirname(__DIR__) . '/tools/RegisterWorkbookUpdater.php';
 
 const APP_FIELDS = ['id','channel','place','category','organization','chCategory','camType','model','ip','lon','lat','swVer','fw','integrator','remark','issues','status','activity','siContactName','siContactMobile','siContactEmail'];
 const APP_ISSUES = ['Require Fine Tuning','Require Appropriate Backlight Option','Require Zoom Out','Require Appropriate Min Size','Require Zoom In','Require Tilt Down','Require Tilt Up','Pin Hole Cam','Require Appropriate Detection Area','Require Tilt Left','Require Tilt Right','Offline','Temporarily camera removed','Straight the Camera','FIX CAMERA ALLIGNMENT','REMOVE TARGET BOX OVERLAY','LAST CAPTURE ON 06-09,CHECK CAMERA','CAPTURES MISSING','CHECK CAMERA HEIGHT IS AS INSTRUCTED','fix camera alignment','CAPTURES ARE NOT RECOGNISABLE FIX THE ISSUE','REMOVE OBSTRUCTION','FIX TARGET AREA','OBSTRUCTION INFRONT OF CAMERA','FIX THE TARGET AREA','CHECK THE CAMERA HEIGHT IS AS INSTRUCTED','fix camera alignment,captures missing','CHECK CAMERA ALIGNMENT','NO CAPTURES TILL NOW','LAST CAPTURE IS ON 02-09','CAPTURES ARE NOT CLEAR,CLEAN THE LENS','CLEAN THE LENS','SOME REFLECTIONS SEEING IN CAMERA,CLEAR IT'];
@@ -16,6 +17,8 @@ final class ApiError extends RuntimeException
         $this->status = $status;
     }
 }
+
+require_once dirname(__DIR__) . '/tools/SourceWorkbookImporter.php';
 
 function db(): PDO
 {
@@ -47,6 +50,16 @@ function body_json(): array
     $data = json_decode($raw, true);
     if (!is_array($data)) throw new ApiError(400, 'Invalid JSON body');
     return $data;
+}
+
+function uploaded_workbook_path(): string
+{
+    $file = $_FILES['workbook'] ?? null;
+    if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new ApiError(400, 'Select an Excel workbook to import.');
+    if ((int)($file['size'] ?? 0) > 20000000) throw new ApiError(413, 'Workbook uploads are limited to 20 MB.');
+    if (strtolower(pathinfo((string)($file['name'] ?? ''), PATHINFO_EXTENSION)) !== 'xlsx') throw new ApiError(400, 'Choose an .xlsx workbook.');
+    if (!is_uploaded_file((string)($file['tmp_name'] ?? ''))) throw new ApiError(400, 'Workbook upload did not complete.');
+    return (string)$file['tmp_name'];
 }
 
 function clip_value(mixed $value, int $limit): string
@@ -224,7 +237,8 @@ function api_dispatch(): void
     $path = (string)($_GET['path'] ?? '');
     if (!str_starts_with($path, '/api/')) throw new ApiError(404, 'Not found');
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
-    $body = in_array($method, ['GET', 'HEAD'], true) ? [] : body_json();
+    $contentType = strtolower((string)($_SERVER['CONTENT_TYPE'] ?? ''));
+    $body = in_array($method, ['GET', 'HEAD'], true) ? [] : (str_starts_with($contentType, 'application/json') ? body_json() : []);
     if (!in_array($method, ['GET', 'HEAD'], true) && isset($_SERVER['HTTP_ORIGIN'])) {
         $originHost = parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_HOST);
         $requestHost = explode(':', $_SERVER['HTTP_HOST'] ?? '', 2)[0];
@@ -308,6 +322,34 @@ function api_dispatch(): void
             $out['users'] = array_map('public_user', $pdo->query("SELECT id, username, name, role FROM users WHERE role = 'si' ORDER BY name")->fetchAll());
         }
         json_response($out);
+    }
+
+    if ($method === 'POST' && $path === '/api/workbook/import-preview') {
+        require_admin();
+        $prepared = SourceWorkbookImporter::prepare($pdo, uploaded_workbook_path());
+        json_response(SourceWorkbookImporter::previewPrepared($prepared));
+    }
+
+    if ($method === 'POST' && $path === '/api/workbook/import') {
+        require_admin();
+        $prepared = SourceWorkbookImporter::prepare($pdo, uploaded_workbook_path());
+        if (!$prepared['rows']) json_response(SourceWorkbookImporter::previewPrepared($prepared) + ['added' => 0]);
+        $workbookStage = RegisterWorkbookUpdater::stageAppend($prepared['rows']);
+        $workbookInstall = null;
+        $pdo->beginTransaction();
+        try {
+            $result = SourceWorkbookImporter::insertPrepared($pdo, $prepared);
+            $change = revision_change();
+            $workbookInstall = RegisterWorkbookUpdater::install($workbookStage);
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($workbookInstall !== null) RegisterWorkbookUpdater::restore($workbookInstall);
+            else RegisterWorkbookUpdater::discard($workbookStage);
+            throw $error;
+        }
+        RegisterWorkbookUpdater::finalize($workbookInstall);
+        json_response(array_merge($result, $change));
     }
 
     if ($method === 'GET' && $path === '/api/rev') {
@@ -427,6 +469,7 @@ function api_dispatch(): void
 
         if ($method === 'POST' && $isAction) {
             $pdo->beginTransaction();
+            $workbookEvent = null;
             $camera = camera_by_id($id, true);
             if (!$camera || !user_can_access($user, $camera)) throw new ApiError(404, 'Camera not found');
             $activity = decode_json($camera['activity']);
@@ -446,6 +489,7 @@ function api_dispatch(): void
                 if (!is_pending($camera)) throw new ApiError(409, 'This camera is not waiting for a check');
                 $activity[] = ['a' => 'CHECK_OK', 't' => $now, 'by' => $user['name']];
                 $camera['status'] = 'OK';
+                $workbookEvent = ['action' => 'verified', 'issues' => [], 'note' => ''];
             } elseif (($body['action'] ?? '') === 'check_notok') {
                 if ($user['role'] !== 'admin') throw new ApiError(403, 'Only the admin can verify');
                 if (!is_pending($camera)) throw new ApiError(409, 'This camera is not waiting for a check');
@@ -453,6 +497,7 @@ function api_dispatch(): void
                 if (!count($issues)) throw new ApiError(400, 'Select at least one issue');
                 $note = clip_value($body['note'] ?? '', 300);
                 $activity[] = ['a' => 'CHECK_NOTOK', 't' => $now, 'by' => $user['name'], 'issues' => $issues, 'note' => $note];
+                $workbookEvent = ['action' => 'refix', 'issues' => $issues, 'note' => $note];
                 $assign = $pdo->prepare('SELECT user_id FROM assignments WHERE site_key = ?');
                 $assign->execute([lower_key((string)$camera['place'])]);
                 $siId = $assign->fetchColumn();
@@ -474,8 +519,22 @@ function api_dispatch(): void
             $camera['activity'] = encode_json($activity);
             $stmt = $pdo->prepare('UPDATE cameras SET status = ?, activity = ? WHERE id = ?');
             $stmt->execute([$camera['status'], $camera['activity'], $id]);
-            $change = revision_change();
-            $pdo->commit();
+            $workbookStage = null;
+            $workbookInstall = null;
+            try {
+                if ($workbookEvent !== null) {
+                    $workbookStage = RegisterWorkbookUpdater::stage($id, $workbookEvent['action'], $now, $workbookEvent['issues'], $workbookEvent['note']);
+                }
+                $change = revision_change();
+                if ($workbookStage !== null) $workbookInstall = RegisterWorkbookUpdater::install($workbookStage);
+                $pdo->commit();
+            } catch (Throwable $error) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                if ($workbookInstall !== null) RegisterWorkbookUpdater::restore($workbookInstall);
+                if ($workbookStage !== null) RegisterWorkbookUpdater::discard($workbookStage);
+                throw $error;
+            }
+            if ($workbookInstall !== null) RegisterWorkbookUpdater::finalize($workbookInstall);
             json_response(array_merge(safe_return_camera(camera_json_row($camera)), $change));
         }
 
@@ -503,8 +562,10 @@ session_start();
 try {
     api_dispatch();
 } catch (ApiError $error) {
+    if (db()->inTransaction()) db()->rollBack();
     json_response(['error' => $error->getMessage()], $error->status);
 } catch (Throwable $error) {
     error_log('Camera Fix Console API error: ' . $error->getMessage());
+    if (db()->inTransaction()) db()->rollBack();
     json_response(['error' => 'Server error'], 500);
 }
