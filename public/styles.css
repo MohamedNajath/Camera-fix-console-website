@@ -178,6 +178,9 @@
   }
   .site-contact-label{ font-weight:600; color:var(--text); }
   .site-contact-value{ color:var(--text-dim); }
+  .si-directory-sites{ margin:0; padding-left:20px; }
+  .si-directory-sites li{ padding:2px 0; }
+  .si-directory-phone{ width:190px; min-width:170px; white-space:nowrap; }
   .site-export-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 
   .issue-breakdown{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }

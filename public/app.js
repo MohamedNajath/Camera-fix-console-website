@@ -163,7 +163,7 @@
   /* ------------------------------------------------------------------ */
   /* Views                                                               */
   /* ------------------------------------------------------------------ */
-  var VIEW_IDS = { overview: 'viewOverview', results: 'viewResults', site: 'viewSite', users: 'viewUsers', empty: 'viewEmpty' };
+  var VIEW_IDS = { overview: 'viewOverview', results: 'viewResults', site: 'viewSite', users: 'viewUsers', siDirectory: 'viewSIDirectory', empty: 'viewEmpty' };
   function showView(name) {
     view = name;
     Object.keys(VIEW_IDS).forEach(function (k) { $(VIEW_IDS[k]).classList.toggle('active', k === name); });
@@ -172,6 +172,7 @@
   $('brandHome').addEventListener('click', goHome);
   $('backBtn').addEventListener('click', goHome);
   $('usersBack').addEventListener('click', goHome);
+  $('siDirectoryBack').addEventListener('click', goHome);
   $('emptyReset').addEventListener('click', goHome);
 
   /* ---------- Login / logout ---------- */
@@ -231,6 +232,7 @@
     if (view === 'site') { if (sites[currentSiteKey]) renderSiteDashboard(); else goHome(); }
     else if (view === 'results') runSearch(lastQuery, true);
     else if (view === 'users') renderUsers();
+    else if (view === 'siDirectory') renderSIDirectory();
   }
   function poll() {
     if (polling || !ME) return;
@@ -660,6 +662,48 @@
   /* SI accounts (admin)                                                 */
   /* ------------------------------------------------------------------ */
   $('usersBtn').addEventListener('click', function () { renderUsers(); showView('users'); window.scrollTo(0, 0); });
+  $('siDirectoryBtn').addEventListener('click', function () { renderSIDirectory(); showView('siDirectory'); window.scrollTo(0, 0); });
+  $('siDirectorySearch').addEventListener('input', renderSIDirectory);
+  function renderSIDirectory() {
+    var integrators = {};
+    ROWS.forEach(function (r) {
+      var name = String(get(r, 'integrator') || '').trim();
+      if (!name) return;
+      var key = name.toLowerCase();
+      if (!integrators[key]) integrators[key] = { name: name, sites: {}, contacts: {}, phones: {}, emails: {} };
+      var entry = integrators[key], site = String(get(r, 'place') || '(Unnamed site)').trim();
+      entry.sites[site.toLowerCase()] = site;
+      [['siContactName', entry.contacts], ['siContactMobile', entry.phones], ['siContactEmail', entry.emails]].forEach(function (pair) {
+        var value = String(get(r, pair[0]) || '').trim();
+        if (value) pair[1][value.toLowerCase()] = value;
+      });
+    });
+    var entries = Object.keys(integrators).map(function (key) { return integrators[key]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var siteCount = {};
+    entries.forEach(function (entry) { Object.keys(entry.sites).forEach(function (key) { siteCount[key] = true; }); });
+    $('siDirectoryStats').innerHTML = statCard(entries.length.toLocaleString(), 'SI partners', '') +
+      statCard(Object.keys(siteCount).length.toLocaleString(), 'Sites covered', '') +
+      statCard(entries.filter(function (entry) { return Object.keys(entry.contacts).length || Object.keys(entry.phones).length || Object.keys(entry.emails).length; }).length.toLocaleString(), 'With contact details', '');
+
+    var query = $('siDirectorySearch').value.trim().toLowerCase();
+    var filtered = entries.filter(function (entry) {
+      var values = [entry.name];
+      [entry.sites, entry.contacts, entry.phones, entry.emails].forEach(function (group) {
+        Object.keys(group).forEach(function (key) { values.push(group[key]); });
+      });
+      return !query || values.join(' ').toLowerCase().indexOf(query) !== -1;
+    });
+    $('siDirectoryBody').innerHTML = filtered.map(function (entry) {
+      var sitesList = Object.keys(entry.sites).map(function (key) { return entry.sites[key]; }).sort(function (a, b) { return a.localeCompare(b); });
+      var contacts = Object.keys(entry.contacts).map(function (key) { return entry.contacts[key]; }).sort();
+      var phones = Object.keys(entry.phones).map(function (key) { return entry.phones[key]; }).sort();
+      var emails = Object.keys(entry.emails).map(function (key) { return entry.emails[key]; }).sort();
+      return '<tr><td class="place-cell">' + esc(entry.name) + '</td><td><ul class="si-directory-sites">' + sitesList.map(function (site) { return '<li>' + esc(site) + '</li>'; }).join('') + '</ul></td>' +
+        '<td>' + esc(contacts.join(' · ') || '—') + '</td>' +
+        '<td class="si-directory-phone">' + (phones.length ? phones.map(function (phone) { return '<a href="tel:' + encodeURIComponent(phone) + '">' + esc(phone) + '</a>'; }).join('<br>') : '—') + '</td>' +
+        '<td>' + (emails.length ? emails.map(function (email) { return '<a href="mailto:' + encodeURIComponent(email) + '">' + esc(email) + '</a>'; }).join('<br>') : '—') + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-faint);padding:26px;">' + (entries.length ? 'No SI entries match this filter.' : 'No SI contractor details found in the camera register.') + '</td></tr>';
+  }
   function renderUsers() {
     $('usersBody').innerHTML = SI_USERS.map(function (u) {
       var mine = siteList.filter(function (s) { return s.siId === u.id; });

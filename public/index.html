@@ -13,7 +13,7 @@ try {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=2026-09-29-navy-dark-theme">
+<link rel="stylesheet" href="styles.css?v=2026-09-30-si-directory-layout">
 </head>
 <body>
 
@@ -50,6 +50,7 @@ try {
         <button class="tb-btn ghost admin-only" id="importWorkbookBtn" hidden>Import new cameras</button>
         <input id="workbookImportFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
         <button class="tb-btn ghost admin-only" id="usersBtn" hidden>SI accounts</button>
+        <button class="tb-btn ghost admin-only" id="siDirectoryBtn" hidden>SI directory</button>
         <button class="tb-btn ghost" id="exportExcelBtn">Download Excel</button>
         <button class="tb-btn ghost si-only" id="exportSiPdfBtn" hidden>SI report PDF</button>
         <div class="pop-wrap" id="bellWrap" hidden>
@@ -173,6 +174,18 @@ try {
       </table></div></div>
     </div>
 
+    <!-- SI DIRECTORY (admin) -->
+    <div class="view" id="viewSIDirectory">
+      <div class="back-row"><button class="back-btn" id="siDirectoryBack">&larr; Back to overview</button></div>
+      <div class="section-title" style="margin-top:22px;">SI directory</div>
+      <div class="stat-grid" id="siDirectoryStats"></div>
+      <label class="field" style="margin:18px 0 12px;max-width:420px;"><span>Filter SI, site, or contact</span><input type="search" id="siDirectorySearch" autocomplete="off"></label>
+      <div class="table-wrap"><div class="table-scroll"><table>
+        <thead><tr><th>SI name</th><th>Sites</th><th>Contact person</th><th>Phone</th><th>Email</th></tr></thead>
+        <tbody id="siDirectoryBody"></tbody>
+      </table></div></div>
+    </div>
+
     <!-- NO RESULTS -->
     <div class="view" id="viewEmpty">
       <div class="empty-state">
@@ -239,6 +252,6 @@ try {
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=2026-09-29-search-si-name"></script>
+<script src="app.js?v=2026-09-30-si-directory"></script>
 </body>
 </html>
