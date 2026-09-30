@@ -228,12 +228,12 @@ final class RegisterWorkbookUpdater
     public static function install(array $stage): array
     {
         $backup = $stage['source'] . '.backup-' . bin2hex(random_bytes(6));
-        if (!rename($stage['source'], $backup)) {
+        if (!@rename($stage['source'], $backup)) {
             self::discard($stage);
             throw new ApiError(503, 'Could not replace the source workbook. Close it in Excel and try again.');
         }
-        if (!rename($stage['temporary'], $stage['source'])) {
-            if (!rename($backup, $stage['source'])) {
+        if (!@rename($stage['temporary'], $stage['source'])) {
+            if (!@rename($backup, $stage['source'])) {
                 throw new RuntimeException('Workbook replacement and recovery both failed; backup is at ' . $backup);
             }
             throw new ApiError(503, 'Could not replace the source workbook. The original was restored.');

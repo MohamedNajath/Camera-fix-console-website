@@ -227,6 +227,17 @@ try {
 </div>
 
 <!-- NOT FIXED MODAL (admin) -->
+<div class="modal-overlay" id="siFixedModalOverlay">
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-head"><div class="modal-title">Mark fix complete</div><button class="modal-close" id="siFixedModalClose" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <p class="modal-help">Add a remark for the reviewer before submitting this fix for approval.</p>
+      <label class="field"><span>Remark for reviewer (optional)</span><textarea id="siFixedRemark" rows="3" maxlength="300" placeholder="Describe what you fixed or any remaining details"></textarea></label>
+    </div>
+    <div class="modal-foot"><div style="flex:1;"></div><button class="tb-btn ghost" id="siFixedModalCancel">Cancel</button><button class="tb-btn" id="siFixedModalConfirm">Submit for review</button></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="rejectModalOverlay">
   <div class="modal-card" style="max-width:480px;">
     <div class="modal-head"><div class="modal-title">What's still wrong?</div><button class="modal-close" id="rejectModalClose" aria-label="Close">&times;</button></div>

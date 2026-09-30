@@ -495,11 +495,12 @@ function api_dispatch(): void
                 if ($user['role'] !== 'si') throw new ApiError(403, 'Only the SI can mark a camera as fixed');
                 if ($camera['status'] === 'OK' || !count(decode_json($camera['issues']))) throw new ApiError(409, 'Nothing to fix on this camera');
                 if (is_pending($camera)) throw new ApiError(409, 'Already marked as fixed');
-                $activity[] = ['a' => 'SI_FIXED', 't' => $now, 'by' => $user['name'], 'username' => $user['username'], 'role' => $user['role']];
+                $note = clip_value($body['note'] ?? '', 300);
+                $activity[] = ['a' => 'SI_FIXED', 't' => $now, 'by' => $user['name'], 'username' => $user['username'], 'role' => $user['role'], 'note' => $note];
                 $adminIds = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'reviewer')")->fetchAll(PDO::FETCH_COLUMN);
                 $notification = $pdo->prepare('INSERT INTO notifications (id, user_id, camera_id, channel, site, issues, note, by_name, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)');
                 foreach ($adminIds as $adminId) {
-                    $notification->execute([bin2hex(random_bytes(6)), $adminId, $camera['id'], $camera['channel'], $camera['place'], encode_json(decode_json($camera['issues'])), '', $user['name'], $now]);
+                    $notification->execute([bin2hex(random_bytes(6)), $adminId, $camera['id'], $camera['channel'], $camera['place'], encode_json(decode_json($camera['issues'])), $note, $user['name'], $now]);
                 }
             } elseif (($body['action'] ?? '') === 'check_ok') {
                 if (!in_array($user['role'], ['admin', 'reviewer'], true)) throw new ApiError(403, 'Only an admin or fix reviewer can verify');

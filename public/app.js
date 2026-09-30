@@ -133,7 +133,7 @@
     if (status === 'OK') return (last && last.a === 'CHECK_OK') ? { key: 'verified', label: 'Verified fixed', cls: 'ok', at: last.t, by: last.by } : { key: 'na', label: '—', cls: 'neutral' };
     if (!issues.length) return { key: 'na', label: '—', cls: 'neutral' };
     if (!last || last.a === 'CHECK_OK') return { key: 'awaiting', label: 'Awaiting fix', cls: 'neutral' };
-    if (last.a === 'SI_FIXED') return { key: 'pending', label: 'Fixed — pending check', cls: 'pending', at: last.t, by: last.by };
+    if (last.a === 'SI_FIXED') return { key: 'pending', label: 'Fixed — pending check', cls: 'pending', at: last.t, by: last.by, note: last.note || '' };
     return { key: 'reopened', label: 'Refix needed', cls: 'warn', at: last.t, by: last.by };
   }
 
@@ -190,7 +190,7 @@
     ME = null; ROWS = []; ASSIGN = {}; SI_USERS = []; REVIEW_USERS = []; NOTIFS = []; lastUnread = 0;
     $('appRoot').hidden = true; $('loginView').hidden = false;
     $('loginPass').value = ''; $('loginBtn').disabled = false;
-    ['modalOverlay', 'rejectModalOverlay', 'pwOverlay'].forEach(function (id) { $(id).classList.remove('open'); });
+    ['modalOverlay', 'siFixedModalOverlay', 'rejectModalOverlay', 'pwOverlay'].forEach(function (id) { $(id).classList.remove('open'); });
     $('loginUser').focus();
   }
   $('loginForm').addEventListener('submit', function (e) {
@@ -532,6 +532,7 @@
 
       var si = '<div class="si-cell"><span class="badge ' + sst.cls + '"><span class="dot"></span>' + esc(sst.label) + '</span>';
       if (sst.at) si += '<span class="si-meta">' + fmt(sst.at) + (sst.by ? ' · ' + esc(sst.by) : '') + '</span>';
+      if (sst.note) si += '<span class="si-meta">SI remark: ' + esc(sst.note) + '</span>';
       var acts = '';
       if (ME.role === 'si' && (sst.key === 'awaiting' || sst.key === 'reopened')) acts = '<button class="mini-btn mini-fix" data-id="' + esc(id) + '" data-action="si_fixed">Mark fixed</button>';
       if (canReview() && sst.key === 'pending') acts = '<button class="mini-btn mini-ok" data-id="' + esc(id) + '" data-action="check_ok">Approve fix</button><button class="mini-btn mini-reject" data-id="' + esc(id) + '" data-action="check_notok">Return to SI</button>';
@@ -561,12 +562,41 @@
     var b = e.target.closest('button[data-action]'); if (!b) return;
     var id = b.getAttribute('data-id'), action = b.getAttribute('data-action');
     if (action === 'edit') { var row = rowById(id); if (row) openModal(row); return; }
+    if (action === 'si_fixed') { openSiFixed(id); return; }
     if (action === 'check_notok') { openReject(id); return; }
     b.disabled = true;
     api('POST', '/api/cameras/' + encodeURIComponent(id) + '/action', { action: action }).then(function (r) {
       replaceRow(r.row); afterChange(r);
       toast(action === 'si_fixed' ? 'Marked as fixed — the admin will verify it' : 'Verified OK — Comment 1 will be OK in the Excel export');
     }).catch(function (err) { fail(err); b.disabled = false; });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* "Not fixed" (admin) -> Remark 2 + message to SI                     */
+  /* ------------------------------------------------------------------ */
+  var fixedId = null;
+  function openSiFixed(id) {
+    if (!rowById(id)) return;
+    fixedId = id; $('siFixedRemark').value = '';
+    $('siFixedModalOverlay').classList.add('open');
+    $('siFixedRemark').focus();
+  }
+  function closeSiFixed() { $('siFixedModalOverlay').classList.remove('open'); fixedId = null; }
+  $('siFixedModalClose').addEventListener('click', closeSiFixed);
+  $('siFixedModalCancel').addEventListener('click', closeSiFixed);
+  $('siFixedModalConfirm').addEventListener('click', function () {
+    var confirmButton = $('siFixedModalConfirm');
+    if (confirmButton.disabled || !fixedId) return;
+    var id = fixedId;
+    confirmButton.disabled = true;
+    confirmButton.textContent = 'Submitting…';
+    api('POST', '/api/cameras/' + encodeURIComponent(id) + '/action', { action: 'si_fixed', note: $('siFixedRemark').value }).then(function (r) {
+      replaceRow(r.row); afterChange(r); closeSiFixed();
+      toast('Fix submitted for review');
+    }).catch(fail).then(function () {
+      confirmButton.disabled = false;
+      confirmButton.textContent = 'Submit for review';
+    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -586,12 +616,19 @@
   $('rejectModalClose').addEventListener('click', closeReject);
   $('rejectModalCancel').addEventListener('click', closeReject);
   $('rejectModalConfirm').addEventListener('click', function () {
+    var confirmButton = $('rejectModalConfirm');
+    if (confirmButton.disabled || !rejectId) return;
     var issues = rejectBoxes.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
     if (!issues.length) { toast('Select at least one issue'); return; }
+    confirmButton.disabled = true;
+    confirmButton.textContent = 'Sending…';
     api('POST', '/api/cameras/' + encodeURIComponent(rejectId) + '/action', { action: 'check_notok', issues: issues, note: $('rejectNote').value }).then(function (r) {
       replaceRow(r.row); afterChange(r); closeReject();
       toast('Sent back to the SI — they have been notified');
-    }).catch(fail);
+    }).catch(fail).then(function () {
+      confirmButton.disabled = false;
+      confirmButton.textContent = 'Send back to SI';
+    });
   });
 
   /* ------------------------------------------------------------------ */
@@ -890,7 +927,8 @@
     var historyHtml = history.length ? history.map(function (item) {
       var actor = item.username ? ' · Login: ' + esc(item.username) : (item.by ? ' · ' + esc(item.by) : '');
       var extraIssues = item.issues && item.issues.length ? '<div><strong>Issues:</strong> ' + esc(item.issues.join(', ')) + '</div>' : '';
-      var note = item.note ? '<div><strong>Message:</strong> ' + esc(item.note) + '</div>' : '';
+      var noteLabel = item.a === 'SI_FIXED' ? 'SI remark' : 'Message';
+      var note = item.note ? '<div><strong>' + noteLabel + ':</strong> ' + esc(item.note) + '</div>' : '';
       return '<li><strong>' + esc(activityLabel(item)) + '</strong> · ' + esc(fmt(item.t)) + actor + extraIssues + note + '</li>';
     }).join('') : '<li>No updates recorded</li>';
     var currentState = siState(row);
