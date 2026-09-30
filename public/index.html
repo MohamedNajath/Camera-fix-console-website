@@ -47,10 +47,10 @@ try {
       </div>
       <div class="topbar-actions">
         <button class="tb-btn admin-only" id="addCameraBtn" hidden>+ Add camera</button>
-        <button class="tb-btn ghost admin-only" id="importWorkbookBtn" hidden>Import new cameras</button>
+        <button class="tb-btn ghost reviewer-admin-only" id="importWorkbookBtn" hidden>Import new sites / cameras</button>
         <input id="workbookImportFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-        <button class="tb-btn ghost admin-only" id="usersBtn" hidden>SI accounts</button>
-        <button class="tb-btn ghost admin-only" id="siDirectoryBtn" hidden>SI directory</button>
+        <button class="tb-btn ghost admin-only" id="usersBtn" hidden>User accounts</button>
+        <button class="tb-btn ghost reviewer-admin-only" id="siDirectoryBtn" hidden>SI directory</button>
         <button class="tb-btn ghost" id="exportExcelBtn">Download Excel</button>
         <button class="tb-btn ghost si-only" id="exportSiPdfBtn" hidden>SI report PDF</button>
         <div class="pop-wrap" id="bellWrap" hidden>
@@ -88,8 +88,8 @@ try {
       </div>
       <div class="section-title">At a glance</div>
       <div class="stat-grid" id="overviewStats"></div>
-      <div class="section-title admin-only" id="allSitesTitle" hidden>All sites</div>
-      <div class="table-wrap admin-only" id="allSitesWrap" hidden>
+      <div class="section-title reviewer-admin-only" id="allSitesTitle" hidden>All sites</div>
+      <div class="table-wrap reviewer-admin-only" id="allSitesWrap" hidden>
         <div class="table-scroll"><table>
           <thead><tr><th>Site</th><th>Category</th><th>Assigned SI</th><th>Cameras</th><th>Needs fix</th><th>Confirmed OK</th><th>Pending check</th><th></th></tr></thead>
           <tbody id="allSitesBody"></tbody>
@@ -98,7 +98,7 @@ try {
       </div>
       <div class="section-title" id="topIssuesTitle">Sites with the most open issues</div>
       <div class="table-wrap"><div class="table-scroll"><table>
-        <thead><tr><th>Site</th><th>Category</th><th class="admin-only" hidden>SI</th><th>Cameras</th><th>Needs fix</th><th></th></tr></thead>
+        <thead><tr><th>Site</th><th>Category</th><th class="reviewer-admin-only" hidden>SI</th><th>Cameras</th><th>Needs fix</th><th></th></tr></thead>
         <tbody id="topIssuesBody"></tbody>
       </table></div></div>
       <div class="empty-state" id="noSitesMsg" hidden>
@@ -110,13 +110,13 @@ try {
     <!-- SEARCH RESULTS -->
     <div class="view" id="viewResults">
       <div class="section-title" style="margin-top:28px;" id="resultsTitle">Matching sites</div>
-      <div class="assign-bar admin-only" id="assignBar" hidden>
+      <div class="assign-bar reviewer-admin-only" id="assignBar" hidden>
         <span id="assignCount"></span>
         <select id="assignSelect"></select>
         <button class="tb-btn" id="assignBtn">Assign selected</button>
       </div>
       <div class="table-wrap"><div class="table-scroll"><table>
-        <thead><tr><th class="admin-only" hidden><input type="checkbox" id="resultsCheckAll" aria-label="Select all"></th><th>Site</th><th>Category</th><th class="admin-only" hidden>SI</th><th>Cameras</th><th>Needs fix</th><th></th></tr></thead>
+        <thead><tr><th class="reviewer-admin-only" hidden><input type="checkbox" id="resultsCheckAll" aria-label="Select all"></th><th>Site</th><th>Category</th><th class="reviewer-admin-only" hidden>SI</th><th>Cameras</th><th>Needs fix</th><th></th></tr></thead>
         <tbody id="resultsBody"></tbody>
       </table></div></div>
     </div>
@@ -144,19 +144,20 @@ try {
       <div class="filter-row" id="statusFilters"></div>
       <div class="table-wrap"><div class="table-scroll"><table>
         <thead><tr>
-          <th>Channel</th><th>Status</th><th>SI Status</th><th>Category</th><th>Type</th><th>Model</th><th>Firmware</th><th>Details</th><th>Remark 2</th><th class="admin-only" hidden></th>
+          <th>Channel</th><th>Status</th><th>SI Status</th><th>Category</th><th>Type</th><th>Model</th><th>Firmware</th><th>Details</th><th>Remark 2</th><th class="camera-edit-only" hidden></th>
         </tr></thead>
         <tbody id="cameraBody"></tbody>
       </table></div></div>
-      <div class="add-row-card admin-only" id="addCameraToSite" hidden>+ Add another camera to this site</div>
+      <div class="add-row-card reviewer-admin-only" id="addCameraToSite" hidden>+ Add another camera to this site</div>
     </div>
 
     <!-- SI ACCOUNTS (admin) -->
     <div class="view" id="viewUsers">
       <div class="back-row"><button class="back-btn" id="usersBack">&larr; Back to overview</button></div>
-      <div class="section-title" style="margin-top:22px;">Create an SI account</div>
+      <div class="section-title" style="margin-top:22px;">Create user account</div>
       <div class="panel-card">
         <div class="field-grid">
+          <label class="field"><span>Role</span><select id="nuRole"><option value="si">SI contractor</option><option value="reviewer">Fix reviewer</option></select></label>
           <label class="field"><span>Full name / company</span><input type="text" id="nuName" maxlength="80" placeholder="e.g. Ahmed Ali — Gulf Systems"></label>
           <label class="field"><span>Username</span><input type="text" id="nuUser" maxlength="32" placeholder="e.g. ahmed.si" autocomplete="off"></label>
           <label class="field field-wide"><span>Password (min 8 characters)</span>
@@ -167,9 +168,9 @@ try {
         <button class="tb-btn" id="nuCreate">Create account</button>
         <div class="created-box" id="createdBox" hidden></div>
       </div>
-      <div class="section-title">SI accounts</div>
+      <div class="section-title">User accounts</div>
       <div class="table-wrap"><div class="table-scroll"><table>
-        <thead><tr><th>Name</th><th>Username</th><th>Sites assigned</th><th>Cameras</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Sites assigned</th><th>Cameras</th><th></th></tr></thead>
         <tbody id="usersBody"></tbody>
       </table></div></div>
     </div>

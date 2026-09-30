@@ -60,7 +60,13 @@
     try { return new Date(iso).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
     catch (e) { return iso; }
   }
-  function statCard(num, label, cls) { return '<div class="stat-card ' + (cls || '') + '"><div class="stat-num">' + num + '</div><div class="stat-label">' + esc(label) + '</div></div>'; }
+  function circularStat(value, label, context, progress, tone) {
+    var percent = Math.max(0, Math.min(100, progress));
+    return '<div class="circular-stat ' + tone + '">' +
+      '<div class="circular-stat-ring" style="--metric-progress:' + percent + '%" aria-hidden="true"><div class="circular-stat-center">' +
+      '<span class="circular-stat-value">' + value.toLocaleString() + '</span></div></div>' +
+      '<div class="circular-stat-label">' + label + '</div><div class="circular-stat-context">' + context + '</div></div>';
+  }
   function issueTags(list) { return (list || []).map(function (i) { return '<span class="issue-tag">' + esc(i) + '</span>'; }).join(''); }
   function siteKeyOf(name) { return String(name || '(Unnamed site)').toLowerCase(); }
 
@@ -73,7 +79,7 @@
   /* ------------------------------------------------------------------ */
   /* State                                                               */
   /* ------------------------------------------------------------------ */
-  var ME = null, ROWS = [], ASSIGN = {}, SI_USERS = [], REV = 0;
+  var ME = null, ROWS = [], ASSIGN = {}, SI_USERS = [], REVIEW_USERS = [], REV = 0;
   var sites = {}, siteList = [];
   var NOTIFS = [], lastUnread = 0;
   var view = 'overview', currentSiteKey = null, currentStatusFilter = 'all', lastQuery = '';
@@ -159,6 +165,9 @@
   function siById(id) { for (var i = 0; i < SI_USERS.length; i++) if (SI_USERS[i].id === id) return SI_USERS[i]; return null; }
   function siLabel(id) { var u = siById(id); return u ? esc(u.name) : '<span style="color:var(--text-faint);">Unassigned</span>'; }
   function isAdmin() { return ME && ME.role === 'admin'; }
+  function isReviewer() { return ME && ME.role === 'reviewer'; }
+  function canReview() { return isAdmin() || isReviewer(); }
+  function canEditCameras() { return canReview(); }
 
   /* ------------------------------------------------------------------ */
   /* Views                                                               */
@@ -178,7 +187,7 @@
   /* ---------- Login / logout ---------- */
   function showLogin() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    ME = null; ROWS = []; ASSIGN = {}; SI_USERS = []; NOTIFS = []; lastUnread = 0;
+    ME = null; ROWS = []; ASSIGN = {}; SI_USERS = []; REVIEW_USERS = []; NOTIFS = []; lastUnread = 0;
     $('appRoot').hidden = true; $('loginView').hidden = false;
     $('loginPass').value = ''; $('loginBtn').disabled = false;
     ['modalOverlay', 'rejectModalOverlay', 'pwOverlay'].forEach(function (id) { $(id).classList.remove('open'); });
@@ -199,21 +208,25 @@
   function applyRole() {
     var admin = isAdmin();
     document.querySelectorAll('.admin-only').forEach(function (el) { el.hidden = !admin; });
-    document.querySelectorAll('.si-only').forEach(function (el) { el.hidden = admin; });
+    document.querySelectorAll('.reviewer-admin-only').forEach(function (el) { el.hidden = !canReview(); });
+    document.querySelectorAll('.si-only').forEach(function (el) { el.hidden = !ME || ME.role !== 'si'; });
+    document.querySelectorAll('.camera-edit-only').forEach(function (el) { el.hidden = !canEditCameras(); });
     $('bellWrap').hidden = false;
     $('userLabel').textContent = ME.name;
-    $('userPanelName').textContent = ME.name + ' · ' + (admin ? 'Administrator' : 'SI contractor');
-    $('heroTitle').textContent = admin ? 'Find a site. See every camera on it.' : 'Your assigned sites';
+    $('userPanelName').textContent = ME.name + ' · ' + (admin ? 'Administrator' : isReviewer() ? 'Fix reviewer' : 'SI contractor');
+    $('heroTitle').textContent = admin ? 'Find a site. See every camera on it.' : isReviewer() ? 'Review SI camera fixes' : 'Your assigned sites';
     $('heroText').textContent = admin
       ? 'Search any site, see which SI is responsible, and verify their fixes. Assign sites to SI accounts from the search results.'
-      : 'Search a site to see its cameras, mark fixes as done, and read messages from the admin.';
+      : isReviewer()
+        ? 'Review fixes submitted by SI partners, approve completed work, or return issues that still need attention.'
+        : 'Search a site to see its cameras, mark fixes as done, and read messages from the admin.';
   }
 
   function startApp() {
     $('loginView').hidden = true; $('appRoot').hidden = false;
     applyRole(); goHome();
     return loadAll(true).then(function () {
-      if (lastUnread > 0) toast('You have ' + lastUnread + ' unread ' + (isAdmin() ? 'fix update' : 'message') + (lastUnread === 1 ? '' : 's'));
+      if (lastUnread > 0) toast('You have ' + lastUnread + ' unread ' + (canReview() ? 'fix update' : 'message') + (lastUnread === 1 ? '' : 's'));
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(poll, 10000);
     });
@@ -222,7 +235,9 @@
   /* ---------- Data loading + polling ---------- */
   function loadAll(first) {
     return api('GET', '/api/data').then(function (d) {
-      ME = d.me; REV = d.rev; ROWS = d.rows; ASSIGN = d.assignments || {}; SI_USERS = d.users || [];
+      ME = d.me; REV = d.rev; ROWS = d.rows; ASSIGN = d.assignments || {};
+      SI_USERS = (d.users || []).filter(function (user) { return user.role === 'si'; });
+      REVIEW_USERS = (d.users || []).filter(function (user) { return user.role === 'reviewer'; });
       buildIndex(); renderOverview();
       if (!first) refreshView();
       return loadNotifications(!first);
@@ -247,7 +262,7 @@
   /* Overview                                                            */
   /* ------------------------------------------------------------------ */
   function renderAllSitesTable() {
-    if (!isAdmin() || !$('allSitesBody')) return;
+    if (!canReview() || !$('allSitesBody')) return;
     var sourceList = siteList && siteList.length ? siteList : Object.keys(sites).map(function (k) {
       var s = sites[k];
       return { key: k, name: s.name, category: s.category, total: s.rows.length, needsFix: s.rows.filter(function (r) { return get(r, 'status') === 'Needs Fix'; }).length, ok: s.rows.filter(function (r) { return get(r, 'status') === 'OK'; }).length, rows: s.rows, siId: ASSIGN[k] || null, pending: s.rows.filter(function (r) { return siState(r).key === 'pending'; }).length };
@@ -290,30 +305,36 @@
       if (siState(r).key === 'pending') pend++;
     });
     var admin = isAdmin();
-    var html = statCard(siteList.length.toLocaleString(), admin ? 'Sites in register' : 'Sites assigned to you', '') +
-      statCard(total.toLocaleString(), 'Total cameras', '') +
-      statCard(fix.toLocaleString(), 'Cameras needing fix', 'warn') +
-      statCard(pend.toLocaleString(), 'Pending check', pend ? 'pending' : '') +
-      statCard((total ? Math.round(ok / total * 100) : 0) + '%', 'Confirmed OK', 'ok');
-    if (admin) html += statCard(siteList.filter(function (s) { return !s.siId; }).length.toLocaleString(), 'Unassigned sites', '');
+    function percentage(value, denominator) { return denominator ? value / denominator * 100 : 0; }
+    function percentageLabel(value, denominator) {
+      var percent = percentage(value, denominator);
+      return (percent > 0 && percent < 1 ? percent.toFixed(2) : String(Math.round(percent * 10) / 10)) + '%';
+    }
+    var unassigned = siteList.filter(function (s) { return !s.siId; }).length;
+    var html = circularStat(siteList.length, admin || isReviewer() ? 'Sites in register' : 'Sites assigned to you', 'complete site count', 100, admin ? 'register' : 'total') +
+      circularStat(total, 'Total cameras', 'all camera records', total ? 100 : 0, 'total') +
+      circularStat(fix, 'Cameras needing fix', percentageLabel(fix, total) + ' of cameras', percentage(fix, total), 'warn') +
+      circularStat(pend, 'Pending check', percentageLabel(pend, total) + ' of cameras', percentage(pend, total), 'pending') +
+      circularStat(percentageLabel(ok, total), 'Confirmed OK', 'of cameras', percentage(ok, total), 'ok');
+    if (admin) html += circularStat(unassigned, 'Unassigned sites', percentageLabel(unassigned, siteList.length) + ' of sites', percentage(unassigned, siteList.length), 'neutral');
     $('overviewStats').innerHTML = html;
 
-    var empty = !admin && siteList.length === 0;
+    var empty = ME.role === 'si' && siteList.length === 0;
     $('noSitesMsg').hidden = !empty;
     $('topIssuesTitle').hidden = empty;
     $('topIssuesBody').closest('.table-wrap').hidden = empty;
 
-    var showAllSites = !!admin && siteList.length > 0;
+    var showAllSites = !!canReview() && siteList.length > 0;
     $('allSitesTitle').hidden = !showAllSites;
     $('allSitesWrap').hidden = !showAllSites;
-    if (admin) {
+    if (canReview()) {
       renderAllSitesTable();
     }
 
     var top = siteList.filter(function (s) { return s.needsFix > 0; }).sort(function (a, b) { return b.needsFix - a.needsFix; }).slice(0, 15);
     $('topIssuesBody').innerHTML = top.map(function (s) {
       return '<tr class="row-link" data-key="' + esc(s.key) + '"><td class="place-cell">' + esc(s.name) + '</td><td class="path-cell">' + esc(s.category) + '</td>' +
-        (admin ? '<td>' + siLabel(s.siId) + '</td>' : '') +
+        (canReview() ? '<td>' + siLabel(s.siId) + '</td>' : '') +
         '<td class="mono">' + s.total + '</td><td><span class="badge warn"><span class="dot"></span>' + s.needsFix + '</span></td><td class="mono">&rarr;</td></tr>';
     }).join('');
     $('siteDatalist').innerHTML = siteList.map(function (s) { return '<option value="' + esc(s.name) + '">'; }).join('');
@@ -384,15 +405,15 @@
   }
   function checkedKeys() { return resultMatches.filter(function (s) { return resultChecked[s.key]; }).map(function (s) { return s.key; }); }
   function renderResults() {
-    var admin = isAdmin();
+    var canAssign = canReview();
     $('resultsBody').innerHTML = resultMatches.map(function (s) {
       return '<tr class="row-link" data-key="' + esc(s.key) + '">' +
-        (admin ? '<td><input type="checkbox" class="rchk" data-key="' + esc(s.key) + '"' + (resultChecked[s.key] ? ' checked' : '') + '></td>' : '') +
+        (canAssign ? '<td><input type="checkbox" class="rchk" data-key="' + esc(s.key) + '"' + (resultChecked[s.key] ? ' checked' : '') + '></td>' : '') +
         '<td class="place-cell">' + esc(s.name) + '</td><td class="path-cell">' + esc(s.category) + '</td>' +
-        (admin ? '<td>' + siLabel(s.siId) + '</td>' : '') +
+        (canAssign ? '<td>' + siLabel(s.siId) + '</td>' : '') +
         '<td class="mono">' + s.total + '</td><td>' + (s.needsFix ? '<span class="badge warn"><span class="dot"></span>' + s.needsFix + '</span>' : '<span class="badge ok"><span class="dot"></span>0</span>') + '</td><td class="mono">&rarr;</td></tr>';
     }).join('');
-    if (admin) {
+    if (canAssign) {
       $('assignSelect').innerHTML = '<option value="__pick" selected disabled>Choose SI…</option><option value="">— Remove assignment —</option>' +
         SI_USERS.map(function (u) { return '<option value="' + esc(u.id) + '">' + esc(u.name) + ' (' + esc(u.username) + ')</option>'; }).join('');
       updateAssignCount();
@@ -463,7 +484,7 @@
     }
     $('siteContact').innerHTML = siteContact ? '<span class="site-contact-label">SI contact</span><span class="site-contact-value">' + esc(siteContact) + '</span>' : '';
 
-    if (isAdmin()) {
+    if (canReview()) {
       var cur = ASSIGN[currentSiteKey] || '', u = siById(cur);
       $('siAssign').innerHTML = '<span>Assigned SI:</span><span class="si-chip' + (u ? '' : ' none') + '">' + (u ? esc(u.name) + ' · ' + esc(u.username) : 'Unassigned') + '</span>' +
         '<select id="siSelect" aria-label="Change SI"><option value=""' + (cur ? '' : ' selected') + '>Unassigned</option>' +
@@ -471,7 +492,12 @@
       $('siSelect').addEventListener('change', function (e) { assignSites([currentSiteKey], e.target.value || null); });
     } else $('siAssign').innerHTML = '';
 
-    $('siteStats').innerHTML = statCard(total, 'Total cameras', '') + statCard(ok, 'Confirmed OK', 'ok') + statCard(fix, 'Needs fix', fix ? 'warn' : '') + statCard(pend, 'Pending check', pend ? 'pending' : '') + statCard(nod, 'No data yet', '');
+    function share(value) { return total ? Math.round(value / total * 1000) / 10 : 0; }
+    $('siteStats').innerHTML = circularStat(total, 'Total cameras', 'all camera records', total ? 100 : 0, 'total') +
+      circularStat(ok, 'Confirmed OK', share(ok) + '% of cameras', share(ok), 'ok') +
+      circularStat(fix, 'Needs fix', share(fix) + '% of cameras', share(fix), 'warn') +
+      circularStat(pend, 'Pending check', share(pend) + '% of cameras', share(pend), 'pending') +
+      circularStat(nod, 'No data yet', share(nod) + '% of cameras', share(nod), 'neutral');
 
     var entries = Object.keys(counts).map(function (k) { return [k, counts[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
     $('issueSection').hidden = !entries.length;
@@ -493,7 +519,7 @@
   });
 
   function renderCameraTable() {
-    var s = sites[currentSiteKey], admin = isAdmin();
+    var s = sites[currentSiteKey], canEdit = canEditCameras();
     var rows = s.rows.filter(function (r) {
       if (currentStatusFilter === 'all') return true;
       if (currentStatusFilter === 'PendingCheck') return siState(r).key === 'pending';
@@ -507,8 +533,8 @@
       var si = '<div class="si-cell"><span class="badge ' + sst.cls + '"><span class="dot"></span>' + esc(sst.label) + '</span>';
       if (sst.at) si += '<span class="si-meta">' + fmt(sst.at) + (sst.by ? ' · ' + esc(sst.by) : '') + '</span>';
       var acts = '';
-      if (!admin && (sst.key === 'awaiting' || sst.key === 'reopened')) acts = '<button class="mini-btn mini-fix" data-id="' + esc(id) + '" data-action="si_fixed">Mark fixed</button>';
-      if (admin && sst.key === 'pending') acts = '<button class="mini-btn mini-ok" data-id="' + esc(id) + '" data-action="check_ok">Verified OK</button><button class="mini-btn mini-reject" data-id="' + esc(id) + '" data-action="check_notok">Not fixed</button>';
+      if (ME.role === 'si' && (sst.key === 'awaiting' || sst.key === 'reopened')) acts = '<button class="mini-btn mini-fix" data-id="' + esc(id) + '" data-action="si_fixed">Mark fixed</button>';
+      if (canReview() && sst.key === 'pending') acts = '<button class="mini-btn mini-ok" data-id="' + esc(id) + '" data-action="check_ok">Approve fix</button><button class="mini-btn mini-reject" data-id="' + esc(id) + '" data-action="check_notok">Return to SI</button>';
       if (acts) si += '<div class="si-actions">' + acts + '</div>';
       si += '</div>';
 
@@ -520,8 +546,8 @@
         '<td>' + si + '</td><td>' + esc(get(r, 'chCategory')) + '</td><td>' + esc(get(r, 'camType')) + '</td>' +
         '<td class="mono">' + esc(get(r, 'model')) + '</td><td class="mono">' + esc(get(r, 'fw')) + '</td>' +
         '<td>' + details + '</td><td>' + r2 + '</td>' +
-        (admin ? '<td><button class="icon-btn" data-id="' + esc(id) + '" data-action="edit">Edit</button></td>' : '') + '</tr>';
-    }).join('') || '<tr><td colspan="' + (admin ? '10' : '9') + '" style="text-align:center;color:var(--text-faint);padding:30px;">No cameras in this category</td></tr>';
+        (canEdit ? '<td><button class="icon-btn" data-id="' + esc(id) + '" data-action="edit">Edit</button></td>' : '') + '</tr>';
+      }).join('') || '<tr><td colspan="' + (canEdit ? '10' : '9') + '" style="text-align:center;color:var(--text-faint);padding:30px;">No cameras in this category</td></tr>';
   }
 
   function rowById(id) { for (var i = 0; i < ROWS.length; i++) if (get(ROWS[i], 'id') === id) return ROWS[i]; return null; }
@@ -574,7 +600,7 @@
   function loadNotifications(announce) {
     return api('GET', '/api/notifications').then(function (r) {
       NOTIFS = r.items;
-      if (announce && r.unread > lastUnread) toast(isAdmin() ? 'New SI fix update (' + r.unread + ' unread)' : 'New message from the admin (' + r.unread + ' unread)');
+      if (announce && r.unread > lastUnread) toast(canReview() ? 'New SI fix update (' + r.unread + ' unread)' : 'New message from the admin (' + r.unread + ' unread)');
       lastUnread = r.unread; renderBell();
     });
   }
@@ -582,7 +608,7 @@
     var c = $('bellCount'); c.hidden = lastUnread === 0; c.textContent = lastUnread > 9 ? '9+' : String(lastUnread);
     $('notifList').innerHTML = NOTIFS.length ? NOTIFS.map(function (n) {
       return '<div class="notif-item' + (n.read ? '' : ' unread') + '" data-id="' + esc(n.id) + '" data-site="' + esc(siteKeyOf(n.site)) + '">' +
-        '<div class="notif-title">' + (isAdmin() ? 'SI marked fixed — ready to verify' : 'Camera not fixed — needs another look') + '</div>' +
+        '<div class="notif-title">' + (canReview() ? 'SI marked fixed — ready to verify' : 'Camera not fixed — needs another look') + '</div>' +
         '<div class="notif-site">' + esc(n.site) + '</div><div class="mono" style="font-size:11.5px;margin-bottom:6px;word-break:break-all;">' + esc(n.channel) + '</div>' +
         issueTags(n.issues) + (n.note ? '<div class="notif-note">"' + esc(n.note) + '"</div>' : '') +
         '<div class="notif-time">' + fmt(n.at) + (n.by ? ' · from ' + esc(n.by) : '') + '</div></div>';
@@ -624,7 +650,7 @@
   function openModal(row, prefillSite, prefillCat) {
     editingId = row ? get(row, 'id') : null;
     $('modalTitle').textContent = row ? 'Edit camera' : 'Add camera';
-    $('modalDelete').hidden = !row;
+    $('modalDelete').hidden = !row || !isAdmin();
     Object.keys(FORM).forEach(function (id) { $(id).value = row ? (get(row, FORM[id]) || '') : ''; });
     chkOK.checked = false; issueBoxes.forEach(function (c) { c.checked = false; });
     if (row) { chkOK.checked = get(row, 'status') === 'OK'; var cur = get(row, 'issues') || []; issueBoxes.forEach(function (c) { c.checked = cur.indexOf(c.value) > -1; }); }
@@ -639,13 +665,14 @@
   $('emptyReset').insertAdjacentHTML('afterend', '');
 
   $('modalSave').addEventListener('click', function () {
+    var isEditing = !!editingId;
     var body = { issues: issueBoxes.filter(function (c) { return c.checked; }).map(function (c) { return c.value; }), ok: chkOK.checked };
     Object.keys(FORM).forEach(function (id) { body[FORM[id]] = $(id).value; });
     if (!body.place.trim() || !body.channel.trim()) { toast('Site name and channel name are required'); return; }
     var req = editingId ? api('PUT', '/api/cameras/' + encodeURIComponent(editingId), body) : api('POST', '/api/cameras', body);
     req.then(function (r) {
       replaceRow(r.row); applyRev(r); buildIndex(); renderOverview(); closeModal();
-      toast(editingId ? 'Camera updated' : 'Camera added');
+      toast(isEditing ? 'Camera updated' : 'Camera added');
       openSite(siteKeyOf(get(r.row, 'place')));
     }).catch(fail);
   });
@@ -681,9 +708,15 @@
     var entries = Object.keys(integrators).map(function (key) { return integrators[key]; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
     var siteCount = {};
     entries.forEach(function (entry) { Object.keys(entry.sites).forEach(function (key) { siteCount[key] = true; }); });
-    $('siDirectoryStats').innerHTML = statCard(entries.length.toLocaleString(), 'SI partners', '') +
-      statCard(Object.keys(siteCount).length.toLocaleString(), 'Sites covered', '') +
-      statCard(entries.filter(function (entry) { return Object.keys(entry.contacts).length || Object.keys(entry.phones).length || Object.keys(entry.emails).length; }).length.toLocaleString(), 'With contact details', '');
+    var partnersWithContacts = entries.filter(function (entry) {
+      return Object.keys(entry.contacts).length || Object.keys(entry.phones).length || Object.keys(entry.emails).length;
+    }).length;
+    var sitesCovered = Object.keys(siteCount).length, totalSites = siteList.length;
+    var sitePercent = totalSites ? sitesCovered / totalSites * 100 : 0;
+    var contactPercent = entries.length ? partnersWithContacts / entries.length * 100 : 0;
+    $('siDirectoryStats').innerHTML = circularStat(entries.length, 'SI partners', 'in the directory', 100, 'partners') +
+      circularStat(sitesCovered, 'Sites covered', Math.round(sitePercent) + '% of registered sites', sitePercent, 'coverage') +
+      circularStat(partnersWithContacts, 'With contact details', Math.round(contactPercent) + '% of SI partners', contactPercent, 'contacts');
 
     var query = $('siDirectorySearch').value.trim().toLowerCase();
     var filtered = entries.filter(function (entry) {
@@ -705,12 +738,13 @@
     }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-faint);padding:26px;">' + (entries.length ? 'No SI entries match this filter.' : 'No SI contractor details found in the camera register.') + '</td></tr>';
   }
   function renderUsers() {
-    $('usersBody').innerHTML = SI_USERS.map(function (u) {
-      var mine = siteList.filter(function (s) { return s.siId === u.id; });
+    var users = SI_USERS.concat(REVIEW_USERS);
+    $('usersBody').innerHTML = users.map(function (u) {
+      var mine = u.role === 'si' ? siteList.filter(function (s) { return s.siId === u.id; }) : [];
       var cams = mine.reduce(function (n, s) { return n + s.total; }, 0);
-      return '<tr><td class="place-cell">' + esc(u.name) + '</td><td class="mono">' + esc(u.username) + '</td><td class="mono">' + mine.length + '</td><td class="mono">' + cams + '</td>' +
+      return '<tr><td class="place-cell">' + esc(u.name) + '</td><td class="mono">' + esc(u.username) + '</td><td>' + (u.role === 'reviewer' ? 'Fix reviewer' : 'SI contractor') + '</td><td class="mono">' + (u.role === 'si' ? mine.length : '—') + '</td><td class="mono">' + (u.role === 'si' ? cams : '—') + '</td>' +
         '<td><div class="row-actions"><button class="icon-btn" data-act="pw" data-id="' + esc(u.id) + '">Reset password</button><button class="icon-btn" data-act="del" data-id="' + esc(u.id) + '">Delete</button></div></td></tr>';
-    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-faint);padding:26px;">No SI accounts yet — create the first one above.</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-faint);padding:26px;">No user accounts yet — create one above.</td></tr>';
   }
   function genPassword() {
     var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', out = '', a = new Uint32Array(12);
@@ -720,22 +754,26 @@
   $('nuGen').addEventListener('click', function () { $('nuPass').value = genPassword(); });
   $('nuCreate').addEventListener('click', function () {
     $('nuError').textContent = '';
-    var body = { name: $('nuName').value, username: $('nuUser').value, password: $('nuPass').value };
+    var body = { name: $('nuName').value, username: $('nuUser').value, password: $('nuPass').value, role: $('nuRole').value };
     api('POST', '/api/users', body).then(function (r) {
-      SI_USERS.push(r.user); applyRev(r);
+      if (r.user.role === 'si') SI_USERS.push(r.user); else REVIEW_USERS.push(r.user);
+      applyRev(r);
       $('createdBox').hidden = false;
-      $('createdBox').innerHTML = '<strong>Account created.</strong> Give the SI these sign-in details:<br>Address: <code>' + esc(location.origin) + '</code><br>Username: <code>' + esc(body.username) + '</code><br>Password: <code>' + esc(body.password) + '</code><br><span style="color:var(--text-dim);">This password is not shown again — copy it now. Next: search a site and assign it to this SI.</span>';
+      var roleInstructions = body.role === 'reviewer' ? 'This account can review SI fixes and edit camera records across the register.' : 'Next: search a site and assign it to this SI.';
+      $('createdBox').innerHTML = '<strong>Account created.</strong> Give the user these sign-in details:<br>Address: <code>' + esc(location.origin) + '</code><br>Username: <code>' + esc(body.username) + '</code><br>Password: <code>' + esc(body.password) + '</code><br><span style="color:var(--text-dim);">This password is not shown again — copy it now. ' + roleInstructions + '</span>';
       $('nuName').value = ''; $('nuUser').value = ''; $('nuPass').value = '';
       renderUsers();
     }).catch(function (err) { $('nuError').textContent = err.message; });
   });
   $('usersBody').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-act]'); if (!b) return;
-    var id = b.getAttribute('data-id'), u = siById(id); if (!u) return;
+    var id = b.getAttribute('data-id'), u = SI_USERS.concat(REVIEW_USERS).find(function (user) { return user.id === id; }); if (!u) return;
     if (b.getAttribute('data-act') === 'pw') openPw('reset', u);
-    else if (window.confirm('Delete the account "' + u.name + '"? Their ' + siteList.filter(function (s) { return s.siId === id; }).length + ' site(s) become unassigned.')) {
+    else if (window.confirm('Delete the ' + (u.role === 'reviewer' ? 'reviewer' : 'SI') + ' account "' + u.name + '"?' + (u.role === 'si' ? ' Their ' + siteList.filter(function (s) { return s.siId === id; }).length + ' site(s) become unassigned.' : ''))) {
       api('DELETE', '/api/users/' + id).then(function (r) {
-        SI_USERS = SI_USERS.filter(function (x) { return x.id !== id; }); ASSIGN = r.assignments; applyRev(r);
+        SI_USERS = SI_USERS.filter(function (x) { return x.id !== id; });
+        REVIEW_USERS = REVIEW_USERS.filter(function (x) { return x.id !== id; });
+        ASSIGN = r.assignments || ASSIGN; applyRev(r);
         buildIndex(); renderOverview(); renderUsers(); toast('Account deleted');
       }).catch(fail);
     }
@@ -842,17 +880,18 @@
 
   function activityLabel(item) {
     if (item.a === 'SI_FIXED') return 'SI marked fixed';
-    if (item.a === 'CHECK_OK') return 'Admin verified OK';
-    if (item.a === 'CHECK_NOTOK') return 'Admin requested a refix';
+    if (item.a === 'CHECK_OK') return item.role === 'reviewer' ? 'Fix reviewer approved SI fix' : 'Admin verified OK';
+    if (item.a === 'CHECK_NOTOK') return item.role === 'reviewer' ? 'Fix reviewer returned issue to SI' : 'Admin requested a refix';
     return 'Status updated';
   }
   function reportCamera(row) {
     var issues = get(row, 'issues') || [];
     var history = activityOf(row);
     var historyHtml = history.length ? history.map(function (item) {
+      var actor = item.username ? ' · Login: ' + esc(item.username) : (item.by ? ' · ' + esc(item.by) : '');
       var extraIssues = item.issues && item.issues.length ? '<div><strong>Issues:</strong> ' + esc(item.issues.join(', ')) + '</div>' : '';
       var note = item.note ? '<div><strong>Message:</strong> ' + esc(item.note) + '</div>' : '';
-      return '<li><strong>' + esc(activityLabel(item)) + '</strong> · ' + esc(fmt(item.t)) + (item.by ? ' · ' + esc(item.by) : '') + extraIssues + note + '</li>';
+      return '<li><strong>' + esc(activityLabel(item)) + '</strong> · ' + esc(fmt(item.t)) + actor + extraIssues + note + '</li>';
     }).join('') : '<li>No updates recorded</li>';
     var currentState = siState(row);
     var currentStatus = get(row, 'status') || 'No Data';
@@ -888,7 +927,7 @@
     var report = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>' + esc(title) + '</title><style>' +
       'body{font:12px/1.45 Arial,sans-serif;color:#17202b;margin:28px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0}h3{font-size:14px;margin:0 0 8px;overflow-wrap:anywhere}h4{font-size:12px;margin:12px 0 4px}.meta,.category{color:#57616d}.summary{display:flex;gap:24px;margin:18px 0;padding:12px 0;border-block:1px solid #cbd2d9}.site{margin:24px 0}.site h2{border-bottom:2px solid #0f6db0;padding-bottom:6px}.category{margin:4px 0 10px}.camera{border:1px solid #d8dee4;border-radius:4px;padding:12px;margin:10px 0;break-inside:avoid}.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px}.fact-id,.fact-model,.fact-workflow,.fact-firmware{grid-column:1}.fact-status{grid-column:2}.facts b{margin-right:4px}.status-badge{display:inline-block;padding:1px 7px;border:1px solid;border-radius:4px;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}.status-ok{color:#146c43;background:#e8f5ec;border-color:#a8d5b6}.status-needs-fix{color:#a52834;background:#fce8e8;border-color:#efb5b9}.status-waiting{color:#925000;background:#fff0d6;border-color:#edca8d}.status-neutral{color:#57616d;background:#eef1f4;border-color:#d8dee4}.issues{margin-top:8px}.camera ol{margin:4px 0;padding-left:20px}.camera li{margin:5px 0;break-inside:avoid}.camera li div{margin-left:4px;color:#57616d}.empty{padding:24px 0;color:#57616d}@page{size:auto;margin:15mm}@media print{body{margin:0}.site{break-before:auto}.camera{break-inside:avoid}}' +
-      '</style></head><body><h1>' + (singleSite ? 'Camera Site Report' : 'SI Camera Update Report') + '</h1><div class="meta">' + esc(ME.name) + ' · Generated ' + esc(generated.toLocaleString()) + '</div>' +
+      '</style></head><body><h1>' + (singleSite ? 'Camera Site Report' : 'SI Camera Update Report') + '</h1><div class="meta">' + esc(ME.name) + ' · Login: ' + esc(ME.username) + ' · Generated ' + esc(generated.toLocaleString()) + '</div>' +
       '<div class="summary">' + (singleSite ? '<span><b>Site:</b> ' + esc(reportSite.name) + '</span>' : '<span><b>Assigned sites:</b> ' + reportSites.length + '</span>') + '<span><b>Cameras:</b> ' + reportCameraCount + '</span></div>' +
       (sections || '<p class="empty">No assigned sites</p>') +
       '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},250)})<\/script></body></html>';

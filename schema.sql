@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(32) NOT NULL PRIMARY KEY,
   username VARCHAR(64) NOT NULL UNIQUE,
   name VARCHAR(80) NOT NULL,
-  role ENUM('admin', 'si') NOT NULL,
+  role ENUM('admin', 'si', 'reviewer') NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   session_version INT UNSIGNED NOT NULL DEFAULT 0,
   KEY idx_users_role (role)

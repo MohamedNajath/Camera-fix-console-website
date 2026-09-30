@@ -112,6 +112,26 @@
   .stat-card.ok .stat-num{ color:var(--ok); }
   .stat-card.warn .stat-num{ color:var(--warn); }
   .stat-card.pending .stat-num{ color:var(--pending); }
+  #siDirectoryStats,#siteStats{ grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+  .circular-stat{
+    display:flex; flex-direction:column; align-items:center; min-width:0; padding:20px 12px 18px;
+    border:1px solid var(--border); border-radius:12px; background:var(--surface); text-align:center;
+  }
+  .circular-stat-ring{
+    --metric-color:var(--accent); width:112px; aspect-ratio:1; display:grid; place-items:center;
+    border-radius:50%; padding:8px; background:conic-gradient(from -90deg,var(--metric-color) var(--metric-progress),var(--surface-2) 0);
+  }
+  .circular-stat-center{
+    width:100%; height:100%; display:grid; place-items:center; border-radius:50%; background:var(--surface);
+  }
+  .circular-stat-value{ font-family:var(--font-display); font-size:28px; font-weight:700; line-height:1; }
+  .circular-stat-label{ margin-top:14px; font-size:13px; font-weight:600; color:var(--text); }
+  .circular-stat-context{ margin-top:4px; font-size:12px; color:var(--text-dim); }
+  .circular-stat.register .circular-stat-ring{ --metric-color:var(--danger); }
+  .circular-stat.coverage .circular-stat-ring,.circular-stat.ok .circular-stat-ring{ --metric-color:var(--ok); }
+  .circular-stat.contacts .circular-stat-ring,.circular-stat.warn .circular-stat-ring{ --metric-color:var(--warn); }
+  .circular-stat.pending .circular-stat-ring{ --metric-color:var(--pending); }
+  .circular-stat.neutral .circular-stat-ring{ --metric-color:var(--neutral); }
 
   table{ width:100%; border-collapse:collapse; }
   .table-wrap{

@@ -119,9 +119,16 @@ function require_admin(): array
     return $user;
 }
 
+function require_admin_or_reviewer(): array
+{
+    $user = require_user();
+    if (!in_array($user['role'], ['admin', 'reviewer'], true)) throw new ApiError(403, 'Admin or fix reviewer only');
+    return $user;
+}
+
 function user_can_access(array $user, array $camera): bool
 {
-    if ($user['role'] === 'admin') return true;
+    if (in_array($user['role'], ['admin', 'reviewer'], true)) return true;
     $stmt = db()->prepare('SELECT 1 FROM assignments WHERE site_key = ? AND user_id = ?');
     $stmt->execute([lower_key((string)$camera['place']), $user['id']]);
     return (bool)$stmt->fetchColumn();
@@ -302,7 +309,7 @@ function api_dispatch(): void
 
     if ($method === 'GET' && $path === '/api/data') {
         $user = require_user();
-        if ($user['role'] === 'admin') {
+        if (in_array($user['role'], ['admin', 'reviewer'], true)) {
             $stmt = $pdo->query('SELECT * FROM cameras ORDER BY sort_id');
         } else {
             $stmt = $pdo->prepare("SELECT c.* FROM cameras c JOIN assignments a ON a.site_key = LOWER(COALESCE(NULLIF(c.place, ''), '(Unnamed site)')) AND a.user_id = ? ORDER BY c.sort_id");
@@ -316,22 +323,25 @@ function api_dispatch(): void
             'rev' => (int)$pdo->query('SELECT revision FROM app_meta WHERE id = 1')->fetchColumn(),
             'me' => public_user($user),
         ];
-        if ($user['role'] === 'admin') {
+        if (in_array($user['role'], ['admin', 'reviewer'], true)) {
             $out['assignments'] = [];
             foreach ($pdo->query('SELECT site_key, user_id FROM assignments')->fetchAll() as $assignment) $out['assignments'][$assignment['site_key']] = $assignment['user_id'];
-            $out['users'] = array_map('public_user', $pdo->query("SELECT id, username, name, role FROM users WHERE role = 'si' ORDER BY name")->fetchAll());
+            $userQuery = $user['role'] === 'admin'
+                ? "SELECT id, username, name, role FROM users WHERE role IN ('si', 'reviewer') ORDER BY role, name"
+                : "SELECT id, username, name, role FROM users WHERE role = 'si' ORDER BY name";
+            $out['users'] = array_map('public_user', $pdo->query($userQuery)->fetchAll());
         }
         json_response($out);
     }
 
     if ($method === 'POST' && $path === '/api/workbook/import-preview') {
-        require_admin();
+        require_admin_or_reviewer();
         $prepared = SourceWorkbookImporter::prepare($pdo, uploaded_workbook_path());
         json_response(SourceWorkbookImporter::previewPrepared($prepared));
     }
 
     if ($method === 'POST' && $path === '/api/workbook/import') {
-        require_admin();
+        require_admin_or_reviewer();
         $prepared = SourceWorkbookImporter::prepare($pdo, uploaded_workbook_path());
         if (!$prepared['rows']) json_response(SourceWorkbookImporter::previewPrepared($prepared) + ['added' => 0]);
         $workbookStage = RegisterWorkbookUpdater::stageAppend($prepared['rows']);
@@ -387,26 +397,28 @@ function api_dispatch(): void
         $username = clip_value($body['username'] ?? '', 32);
         $name = clip_value($body['name'] ?? '', 80);
         $password = (string)($body['password'] ?? '');
+        $role = (string)($body['role'] ?? 'si');
         if (!preg_match('/^[A-Za-z0-9._-]{3,32}$/', $username)) throw new ApiError(400, 'Username: 3–32 letters, numbers, dot, dash or underscore');
         if ($name === '') throw new ApiError(400, 'Name is required');
         if (strlen($password) < 8 || strlen($password) > 128) throw new ApiError(400, 'Password must be 8–128 characters');
+        if (!in_array($role, ['si', 'reviewer'], true)) throw new ApiError(400, 'Choose an SI or fix reviewer role');
         $check = $pdo->prepare('SELECT 1 FROM users WHERE username = ?');
         $check->execute([$username]);
         if ($check->fetchColumn()) throw new ApiError(409, 'That username is already taken');
         $id = bin2hex(random_bytes(6));
-        $stmt = $pdo->prepare("INSERT INTO users (id, username, name, role, password_hash) VALUES (?, ?, ?, 'si', ?)");
-        $stmt->execute([$id, $username, $name, password_hash($password, PASSWORD_DEFAULT)]);
+        $stmt = $pdo->prepare('INSERT INTO users (id, username, name, role, password_hash) VALUES (?, ?, ?, ?, ?)');
+        $stmt->execute([$id, $username, $name, $role, password_hash($password, PASSWORD_DEFAULT)]);
         $change = revision_change();
-        json_response(array_merge(['user' => ['id' => $id, 'username' => $username, 'name' => $name, 'role' => 'si']], $change));
+        json_response(array_merge(['user' => ['id' => $id, 'username' => $username, 'name' => $name, 'role' => $role]], $change));
     }
 
     if (preg_match('#^/api/users/([a-f0-9]+)(?:/(password))?$#', $path, $match)) {
         require_admin();
         $id = $match[1];
         $isPassword = isset($match[2]) && $match[2] === 'password';
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role = 'si'");
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE id = ? AND role IN ('si', 'reviewer')");
         $stmt->execute([$id]);
-        if (!$stmt->fetchColumn()) throw new ApiError(404, 'SI account not found');
+        if (!$stmt->fetchColumn()) throw new ApiError(404, 'User account not found');
         if ($method === 'POST' && $isPassword) {
             $password = (string)($body['password'] ?? '');
             if (strlen($password) < 8 || strlen($password) > 128) throw new ApiError(400, 'Password must be 8–128 characters');
@@ -427,7 +439,7 @@ function api_dispatch(): void
     }
 
     if ($method === 'POST' && $path === '/api/assign') {
-        require_admin();
+        require_admin_or_reviewer();
         $userId = !empty($body['userId']) ? (string)$body['userId'] : null;
         if ($userId !== null) {
             $stmt = $pdo->prepare("SELECT 1 FROM users WHERE id = ? AND role = 'si'");
@@ -453,8 +465,13 @@ function api_dispatch(): void
     }
 
     if ($method === 'POST' && $path === '/api/cameras') {
-        require_admin();
+        $user = require_admin_or_reviewer();
         $row = build_camera($body, null);
+        if ($user['role'] === 'reviewer') {
+            $site = $pdo->prepare("SELECT 1 FROM cameras WHERE LOWER(COALESCE(NULLIF(place, ''), '(Unnamed site)')) = ? LIMIT 1");
+            $site->execute([lower_key($row['place'])]);
+            if (!$site->fetchColumn()) throw new ApiError(400, 'Fix reviewers can only add cameras to an existing site');
+        }
         save_camera($row, true);
         $change = revision_change();
         json_response(array_merge(safe_return_camera($row), $change));
@@ -478,25 +495,25 @@ function api_dispatch(): void
                 if ($user['role'] !== 'si') throw new ApiError(403, 'Only the SI can mark a camera as fixed');
                 if ($camera['status'] === 'OK' || !count(decode_json($camera['issues']))) throw new ApiError(409, 'Nothing to fix on this camera');
                 if (is_pending($camera)) throw new ApiError(409, 'Already marked as fixed');
-                $activity[] = ['a' => 'SI_FIXED', 't' => $now, 'by' => $user['name']];
-                $adminIds = $pdo->query("SELECT id FROM users WHERE role = 'admin'")->fetchAll(PDO::FETCH_COLUMN);
+                $activity[] = ['a' => 'SI_FIXED', 't' => $now, 'by' => $user['name'], 'username' => $user['username'], 'role' => $user['role']];
+                $adminIds = $pdo->query("SELECT id FROM users WHERE role IN ('admin', 'reviewer')")->fetchAll(PDO::FETCH_COLUMN);
                 $notification = $pdo->prepare('INSERT INTO notifications (id, user_id, camera_id, channel, site, issues, note, by_name, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)');
                 foreach ($adminIds as $adminId) {
                     $notification->execute([bin2hex(random_bytes(6)), $adminId, $camera['id'], $camera['channel'], $camera['place'], encode_json(decode_json($camera['issues'])), '', $user['name'], $now]);
                 }
             } elseif (($body['action'] ?? '') === 'check_ok') {
-                if ($user['role'] !== 'admin') throw new ApiError(403, 'Only the admin can verify');
+                if (!in_array($user['role'], ['admin', 'reviewer'], true)) throw new ApiError(403, 'Only an admin or fix reviewer can verify');
                 if (!is_pending($camera)) throw new ApiError(409, 'This camera is not waiting for a check');
-                $activity[] = ['a' => 'CHECK_OK', 't' => $now, 'by' => $user['name']];
+                $activity[] = ['a' => 'CHECK_OK', 't' => $now, 'by' => $user['name'], 'username' => $user['username'], 'role' => $user['role']];
                 $camera['status'] = 'OK';
                 $workbookEvent = ['action' => 'verified', 'issues' => [], 'note' => ''];
             } elseif (($body['action'] ?? '') === 'check_notok') {
-                if ($user['role'] !== 'admin') throw new ApiError(403, 'Only the admin can verify');
+                if (!in_array($user['role'], ['admin', 'reviewer'], true)) throw new ApiError(403, 'Only an admin or fix reviewer can verify');
                 if (!is_pending($camera)) throw new ApiError(409, 'This camera is not waiting for a check');
                 $issues = clean_issues($body['issues'] ?? []);
                 if (!count($issues)) throw new ApiError(400, 'Select at least one issue');
                 $note = clip_value($body['note'] ?? '', 300);
-                $activity[] = ['a' => 'CHECK_NOTOK', 't' => $now, 'by' => $user['name'], 'issues' => $issues, 'note' => $note];
+                $activity[] = ['a' => 'CHECK_NOTOK', 't' => $now, 'by' => $user['name'], 'username' => $user['username'], 'role' => $user['role'], 'issues' => $issues, 'note' => $note];
                 $workbookEvent = ['action' => 'refix', 'issues' => $issues, 'note' => $note];
                 $assign = $pdo->prepare('SELECT user_id FROM assignments WHERE site_key = ?');
                 $assign->execute([lower_key((string)$camera['place'])]);
@@ -539,7 +556,7 @@ function api_dispatch(): void
         }
 
         if ($method === 'PUT' && !$isAction) {
-            if ($user['role'] !== 'admin') throw new ApiError(403, 'Admin only');
+            if (!in_array($user['role'], ['admin', 'reviewer'], true)) throw new ApiError(403, 'Admin or fix reviewer only');
             $row = build_camera($body, $camera);
             save_camera($row, false);
             $change = revision_change();

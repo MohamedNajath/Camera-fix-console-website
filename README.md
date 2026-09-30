@@ -1,9 +1,12 @@
 # Camera Fix Console
 
-PHP/MySQL camera-fix register for administrators and SI (contractor) accounts.
-Administrators can manage cameras, assign sites, and verify fixes. SI users see
-only their assigned sites and receive notifications when a camera needs more
-work.
+PHP/MySQL camera-fix register for administrators, fix reviewers, and SI
+(contractor) accounts. Administrators manage cameras, accounts, and site
+assignments. Fix reviewers can browse all sites and SI contact details, import
+new sites from workbooks, assign sites to SI users, add cameras to existing
+sites, edit camera records across the register, and approve or return fixes
+submitted by SI users. SI users see only their assigned sites and receive
+notifications when a camera needs more work.
 
 ## Requirements
 
@@ -21,6 +24,11 @@ The project folder should be `C:\xampp\htdocs\camera-fix-console`.
 1. In the XAMPP Control Panel, start **Apache** and **MySQL**.
 2. Open `http://localhost/phpmyadmin/`, create a database named
    `camera_fix_console`, then select it and import `schema.sql`.
+   For an existing installation, update the role enum once before deploying:
+
+   ```sql
+   ALTER TABLE users MODIFY role ENUM('admin', 'si', 'reviewer') NOT NULL;
+   ```
 3. Copy `config.example.php` to `config.php` in the project folder. Set
    `DB_NAME`, `DB_USER`, and `DB_PASS` to match your local MySQL account. Keep
    `COOKIE_SECURE` set to `false` when using local HTTP.
@@ -36,7 +44,8 @@ The project folder should be `C:\xampp\htdocs\camera-fix-console`.
    accounts cannot use their old passwords. The importer only runs on an empty
    database.
 5. Open `http://localhost/camera-fix-console/public/`, sign in as `admin`, and
-   change the temporary password from the user menu.
+   change the temporary password from the user menu. Create the four reviewer
+   logins from **User accounts** and select **Fix reviewer** for each account.
 
 The included Apache rules block direct web access to configuration, migration
 scripts, and source data. Keep `config.php` and the data files private, and back

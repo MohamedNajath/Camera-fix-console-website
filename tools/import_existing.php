@@ -56,7 +56,7 @@ try {
     $userInsert = $pdo->prepare('INSERT INTO users (id, username, name, role, password_hash) VALUES (?, ?, ?, ?, ?)');
     $knownUsers = [];
     foreach ($users as $user) {
-        if (!in_array($user['role'] ?? '', ['admin', 'si'], true)) continue;
+        if (!in_array($user['role'] ?? '', ['admin', 'si', 'reviewer'], true)) continue;
         $id = (string)($user['id'] ?? bin2hex(random_bytes(6)));
         $username = trim((string)($user['username'] ?? ''));
         $name = trim((string)($user['name'] ?? $username));
