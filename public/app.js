@@ -282,12 +282,15 @@
         if (st === 'OK') okCount++;
         if (siState(r).key === 'pending') pendingCount++;
       });
+      var pendingBadge = pendingCount
+        ? '<span class="badge pending pending-check-active" title="' + pendingCount + ' camera' + (pendingCount === 1 ? '' : 's') + ' awaiting review"><span class="dot"></span>' + pendingCount + '</span>'
+        : '<span class="badge neutral"><span class="dot"></span>0</span>';
       return '<tr class="row-link" data-key="' + esc(s.key) + '"><td class="place-cell">' + esc(s.name) + '</td><td class="path-cell">' + esc(s.category) + '</td>' +
         '<td>' + siLabel(s.siId) + '</td>' +
         '<td class="mono">' + s.total + '</td>' +
         '<td><span class="badge warn"><span class="dot"></span>' + s.needsFix + '</span></td>' +
         '<td><span class="badge ok"><span class="dot"></span>' + okCount + '</span></td>' +
-        '<td><span class="badge danger"><span class="dot"></span>' + pendingCount + '</span></td>' +
+        '<td>' + pendingBadge + '</td>' +
         '<td class="mono">&rarr;</td></tr>';
     }).join('');
 
@@ -671,6 +674,7 @@
     if (!e.target.closest('.search-wrap')) suggestPanel.classList.remove('open');
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePops(); });
+  document.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); }, true);
 
   /* ------------------------------------------------------------------ */
   /* Add / edit camera (admin)                                           */
@@ -788,16 +792,32 @@
     crypto.getRandomValues(a); for (var i = 0; i < a.length; i++) out += chars[a[i] % chars.length];
     return out;
   }
+  function copyTemporaryPassword(password) {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return Promise.reject(new Error('Clipboard access is unavailable'));
+    return navigator.clipboard.writeText(password);
+  }
+  var createdPassword = '';
+  $('createdBox').addEventListener('click', function (e) {
+    var button = e.target.closest('#copyCreatedPassword');
+    if (!button || !createdPassword) return;
+    copyTemporaryPassword(createdPassword).then(function () {
+      createdPassword = ''; button.disabled = true; button.textContent = 'Copied';
+      toast('Temporary password copied');
+    }).catch(function () { toast('Could not access the clipboard. Check browser permissions.'); });
+  });
   $('nuGen').addEventListener('click', function () { $('nuPass').value = genPassword(); });
   $('nuCreate').addEventListener('click', function () {
     $('nuError').textContent = '';
+    createdPassword = ''; $('createdBox').hidden = true;
     var body = { name: $('nuName').value, username: $('nuUser').value, password: $('nuPass').value, role: $('nuRole').value };
     api('POST', '/api/users', body).then(function (r) {
       if (r.user.role === 'si') SI_USERS.push(r.user); else REVIEW_USERS.push(r.user);
       applyRev(r);
+      createdPassword = body.password;
       $('createdBox').hidden = false;
       var roleInstructions = body.role === 'reviewer' ? 'This account can review SI fixes and edit camera records across the register.' : 'Next: search a site and assign it to this SI.';
-      $('createdBox').innerHTML = '<strong>Account created.</strong> Give the user these sign-in details:<br>Address: <code>' + esc(location.origin) + '</code><br>Username: <code>' + esc(body.username) + '</code><br>Password: <code>' + esc(body.password) + '</code><br><span style="color:var(--text-dim);">This password is not shown again — copy it now. ' + roleInstructions + '</span>';
+      $('createdBox').innerHTML = '<strong>Account created.</strong> Share these sign-in details securely:<br>Address: <code>' + esc(location.origin) + '</code><br>Username: <code>' + esc(body.username) + '</code><br><button class="tb-btn ghost" type="button" id="copyCreatedPassword">Copy one-time password</button><br><span style="color:var(--text-dim);">The password is masked and can be copied once. ' + roleInstructions + '</span>';
+      body.password = '';
       $('nuName').value = ''; $('nuUser').value = ''; $('nuPass').value = '';
       renderUsers();
     }).catch(function (err) { $('nuError').textContent = err.message; });
@@ -823,21 +843,46 @@
     $('pwTitle').textContent = mode === 'reset' ? 'Reset password — ' + user.name : 'Change password';
     $('pwCurrentWrap').hidden = mode === 'reset';
     $('pwCurrent').value = ''; $('pwNew').value = mode === 'reset' ? genPassword() : ''; $('pwError').textContent = '';
-    $('pwNew').type = mode === 'reset' ? 'text' : 'password';
+    $('pwNew').type = 'password';
+    $('pwSuccess').hidden = true; $('pwCopy').hidden = true;
+    $('pwSave').hidden = false; $('pwSave').disabled = false; $('pwSave').textContent = 'Save password';
+    $('pwCancel').textContent = 'Cancel';
     $('pwOverlay').classList.add('open');
   }
-  function closePw() { $('pwOverlay').classList.remove('open'); }
+  function closePw() {
+    $('pwOverlay').classList.remove('open'); pwTarget = null;
+    $('pwCurrent').value = ''; $('pwNew').value = '';
+    $('pwSuccess').hidden = true; $('pwCopy').hidden = true;
+    $('pwSave').hidden = false; $('pwSave').disabled = false; $('pwSave').textContent = 'Save password';
+    $('pwCancel').textContent = 'Cancel';
+  }
   $('changePwBtn').addEventListener('click', function () { closePops(); openPw('self'); });
   $('pwClose').addEventListener('click', closePw);
   $('pwCancel').addEventListener('click', closePw);
+  $('pwCopy').addEventListener('click', function () {
+    if (!pwTarget || !$('pwNew').value) return;
+    copyTemporaryPassword($('pwNew').value).then(function () {
+      $('pwNew').value = ''; $('pwCopy').hidden = true;
+      $('pwSuccess').textContent = 'Temporary password copied. It will not be shown again.';
+      toast('Temporary password copied');
+    }).catch(function () { toast('Could not access the clipboard. Check browser permissions.'); });
+  });
   $('pwSave').addEventListener('click', function () {
+    if ($('pwSave').disabled || $('pwSave').hidden) return;
     $('pwError').textContent = '';
-    var req = pwTarget ? api('POST', '/api/users/' + pwTarget.id + '/password', { password: $('pwNew').value })
+    var target = pwTarget;
+    var req = target ? api('POST', '/api/users/' + target.id + '/password', { password: $('pwNew').value })
                        : api('POST', '/api/me/password', { current: $('pwCurrent').value, next: $('pwNew').value });
+    $('pwSave').disabled = true; $('pwSave').textContent = 'Saving…';
     req.then(function () {
-      var msg = pwTarget ? 'Password reset. New password for ' + pwTarget.name + ': ' + $('pwNew').value : 'Password changed';
-      closePw(); toast(msg);
-    }).catch(function (err) { $('pwError').textContent = err.message; });
+      if (target) {
+        $('pwSuccess').textContent = 'Password reset. Copy the temporary password before closing.';
+        $('pwSuccess').hidden = false; $('pwCopy').hidden = false;
+        $('pwSave').hidden = true; $('pwCancel').textContent = 'Done';
+      } else { closePw(); toast('Password changed'); }
+    }).catch(function (err) { $('pwError').textContent = err.message; }).then(function () {
+      if (!$('pwSave').hidden) { $('pwSave').disabled = false; $('pwSave').textContent = 'Save password'; }
+    });
   });
 
   /* ------------------------------------------------------------------ */

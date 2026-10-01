@@ -161,7 +161,7 @@ try {
           <label class="field"><span>Full name / company</span><input type="text" id="nuName" maxlength="80" placeholder="e.g. Ahmed Ali — Gulf Systems"></label>
           <label class="field"><span>Username</span><input type="text" id="nuUser" maxlength="32" placeholder="e.g. ahmed.si" autocomplete="off"></label>
           <label class="field field-wide"><span>Password (min 8 characters)</span>
-            <div class="inline-row"><input type="text" id="nuPass" maxlength="128" autocomplete="off" style="flex:1;"><button class="tb-btn ghost" type="button" id="nuGen">Generate</button></div>
+            <div class="inline-row"><input type="password" id="nuPass" maxlength="128" autocomplete="new-password" style="flex:1;"><button class="tb-btn ghost" type="button" id="nuGen">Generate</button></div>
           </label>
         </div>
         <p class="login-error" id="nuError" role="alert"></p>
@@ -256,14 +256,15 @@ try {
     <div class="modal-head"><div class="modal-title" id="pwTitle">Change password</div><button class="modal-close" id="pwClose" aria-label="Close">&times;</button></div>
     <div class="modal-body">
       <label class="field" id="pwCurrentWrap"><span>Current password</span><input type="password" id="pwCurrent" autocomplete="current-password"></label>
-      <label class="field" style="margin-top:12px;"><span id="pwNewLabel">New password (min 8 characters)</span><input type="text" id="pwNew" autocomplete="new-password" maxlength="128"></label>
+      <label class="field" style="margin-top:12px;"><span id="pwNewLabel">New password (min 8 characters)</span><div class="inline-row"><input type="password" id="pwNew" autocomplete="new-password" maxlength="128" style="flex:1;"><button class="tb-btn ghost" id="pwCopy" type="button" hidden>Copy</button></div></label>
       <p class="login-error" id="pwError" role="alert"></p>
+      <p id="pwSuccess" hidden style="color:var(--ok);font-size:13px;"></p>
     </div>
     <div class="modal-foot"><div style="flex:1;"></div><button class="tb-btn ghost" id="pwCancel">Cancel</button><button class="tb-btn" id="pwSave">Save password</button></div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=2026-09-30-si-directory"></script>
+<script src="app.js?v=2026-10-01-context-menu-block"></script>
 </body>
 </html>

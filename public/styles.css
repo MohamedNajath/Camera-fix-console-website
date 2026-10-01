@@ -156,6 +156,7 @@
   .badge.warn{ background:var(--warn-soft); color:var(--warn); }
   .badge.danger{ background:rgba(192,57,43,0.12); color:var(--danger); }
   .badge.pending{ background:var(--pending-soft); color:var(--pending); }
+  .badge.pending-check-active{ box-shadow:0 0 0 3px var(--pending-soft); }
   .badge.neutral{ background:var(--neutral-soft); color:var(--neutral); }
   .badge .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
 
