@@ -179,7 +179,7 @@
 
   
 
-  .issue-tag{ display:inline-block; font-size:11.5px; background:var(--warn-soft); color:var(--warn); border-radius:6px; padding:2px 7px; margin:2px 4px 2px 0; }
+  .issue-tag{ display:inline-block; font-size:11.5px; background:rgba(192,57,43,0.12); color:var(--danger); border-radius:6px; padding:2px 7px; margin:2px 4px 2px 0; }
 
   /* ---------- Site view ---------- */
   .back-row{ display:flex; align-items:center; gap:10px; margin-top:24px; }
