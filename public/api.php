@@ -189,10 +189,18 @@ function clean_issues(mixed $issues): array
     return array_values(array_unique(array_filter($issues, fn($issue) => is_string($issue) && in_array($issue, APP_ISSUES, true))));
 }
 
+function mask_ip_in_text(mixed $value): string
+{
+    $text = trim((string)$value);
+    if ($text === '') return '';
+    $masked = preg_replace('/\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/', '-XXX.XXX.$3.$4', $text);
+    return $masked === null ? $text : $masked;
+}
+
 function build_camera(array $body, ?array $existing): array
 {
     $place = clip_value($body['place'] ?? '', 200);
-    $channel = clip_value($body['channel'] ?? '', 300);
+    $channel = mask_ip_in_text(clip_value($body['channel'] ?? '', 300));
     if ($place === '' || $channel === '') throw new ApiError(400, 'Site name and channel name are required');
     $row = $existing ? camera_json_row($existing) : array_fill(0, count(APP_FIELDS), '');
     $idx = array_flip(APP_FIELDS);
@@ -204,6 +212,7 @@ function build_camera(array $body, ?array $existing): array
     $row[$idx['place']] = $place;
     $row[$idx['category']] = clip_value($body['category'] ?? '', 200);
     $row[$idx['channel']] = $channel;
+    $row[$idx['ip']] = mask_ip_in_text($row[$idx['ip']]);
     $row[$idx['organization']] = $row[$idx['category']] !== '' ? $place . '/' . $row[$idx['category']] . '/POI' : $place . '/POI';
     $row[$idx['chCategory']] = clip_value($body['chCategory'] ?? '', 40);
     $row[$idx['camType']] = clip_value($body['camType'] ?? '', 100);

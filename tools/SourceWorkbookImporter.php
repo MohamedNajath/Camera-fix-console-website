@@ -141,14 +141,14 @@ final class SourceWorkbookImporter
 
                 $newRows[] = [
                     'id' => $id,
-                    'channel' => self::value($cells, $headers, ['channelname', 'channel'], 300),
+                    'channel' => mask_ip_in_text(self::value($cells, $headers, ['channelname', 'channel'], 300)),
                     'place' => self::clip($place, 200),
                     'category' => self::clip($category, 200),
                     'organization' => self::clip($organization, 500),
                     'chCategory' => self::value($cells, $headers, ['channelcategory'], 40),
                     'camType' => self::value($cells, $headers, ['cameratype', 'type'], 100),
                     'model' => self::value($cells, $headers, ['model'], 100),
-                    'ip' => self::value($cells, $headers, ['ipaddress', 'ip'], 64),
+                    'ip' => mask_ip_in_text(self::value($cells, $headers, ['ipaddress', 'ip'], 64)),
                     'lon' => self::value($cells, $headers, ['longitude'], 64),
                     'lat' => self::value($cells, $headers, ['latitude'], 64),
                     'swVer' => self::value($cells, $headers, ['softwareversion', 'software'], 100),

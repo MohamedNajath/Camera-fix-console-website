@@ -72,6 +72,8 @@
     font-family:var(--font-body); font-size:14.5px; width:100%;
   }
   #searchInput::placeholder{ color:var(--text-faint); }
+  .search-clear{ border:none; background:transparent; color:var(--text-faint); font-size:20px; line-height:1; cursor:pointer; padding:0 2px; flex:none; }
+  .search-clear:hover{ color:var(--text); }
   .kbd-hint{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); border:1px solid var(--border); border-radius:5px; padding:1px 6px; flex:none; }
 
   .suggest-panel{

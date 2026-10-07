@@ -82,7 +82,7 @@
   var ME = null, ROWS = [], ASSIGN = {}, SI_USERS = [], REVIEW_USERS = [], REV = 0;
   var sites = {}, siteList = [];
   var NOTIFS = [], lastUnread = 0;
-  var view = 'overview', currentSiteKey = null, currentStatusFilter = 'all', lastQuery = '';
+  var view = 'overview', currentSiteKey = null, currentStatusFilter = 'all', currentCameraSearch = '', lastQuery = '';
   var resultMatches = [], resultChecked = {};
   var allSitesPage = 1, allSitesPageSize = 50;
   var pollTimer = null, polling = false;
@@ -123,6 +123,24 @@
   /* Workflow state (mirrors the server rules)                           */
   /* ------------------------------------------------------------------ */
   function activityOf(r) { return get(r, 'activity') || []; }
+  function maskIpInText(value) {
+    var text = String(value == null ? '' : value).trim();
+    if (!text) return '';
+    text = text.replace(/\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g, function (full, a, b, c, d) {
+      return '-XXX.XXX.' + c + '.' + d;
+    });
+    return text.replace(/-XXX\.XXX\.\d+\.\d+/g, function (match) { return match.replace(/-XXX\.XXX\./, '-XXX.XXX.'); });
+  }
+  function normalizeSearchText(value) {
+    return maskIpInText(String(value == null ? '' : value)).toLowerCase();
+  }
+  function formatMaskedIp(value) {
+    var ip = String(value == null ? '' : value).trim();
+    if (!ip) return '—';
+    var parts = ip.match(/^\s*(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\s*$/);
+    if (!parts) return maskIpInText(ip);
+    return '-XXX.XXX.' + parts[3] + '.' + parts[4];
+  }
   function latestRejection(r) {
     var a = activityOf(r);
     for (var i = a.length - 1; i >= 0; i--) if (a[i].a === 'CHECK_NOTOK') return a[i];
@@ -362,20 +380,40 @@
   /* ------------------------------------------------------------------ */
   /* Search                                                              */
   /* ------------------------------------------------------------------ */
-  var searchInput = $('searchInput'), suggestPanel = $('suggestPanel'), activeIndex = -1;
-  function matchSites(q) {
-    q = q.trim().toLowerCase(); if (!q) return [];
-    var startsWithSite = [], containsSite = [], matchesSI = [];
-    siteList.forEach(function (s) {
-      var siteIndex = s.name.toLowerCase().indexOf(q);
-      var siMatch = (s.siNames || []).some(function (name) { return name.toLowerCase().indexOf(q) > -1; });
-      if (siteIndex === 0) startsWithSite.push(s);
-      else if (siteIndex > 0) containsSite.push(s);
-      else if (siMatch) matchesSI.push(s);
-    });
-    return startsWithSite.concat(containsSite, matchesSI);
+  var searchInput = $('searchInput'), suggestPanel = $('suggestPanel'), activeIndex = -1, searchClearBtn = $('searchClearBtn');
+  function syncSearchClear() {
+    searchClearBtn.hidden = !searchInput.value.trim();
   }
+  function clearSearch() {
+    searchInput.value = '';
+    currentCameraSearch = '';
+    suggestPanel.classList.remove('open');
+    syncSearchClear();
+    goHome();
+  }
+  function matchSites(q) {
+    q = normalizeSearchText(q).trim(); if (!q) return [];
+    var startsWithSite = [], containsSite = [], containsCamera = [], matchesSI = [];
+    var seen = {};
+    function pushUnique(arr, s) {
+      if (!seen[s.key]) { seen[s.key] = true; arr.push(s); }
+    }
+    siteList.forEach(function (s) {
+      var siteIndex = normalizeSearchText(s.name).indexOf(q);
+      var siMatch = (s.siNames || []).some(function (name) { return normalizeSearchText(name).indexOf(q) > -1; });
+      var cameraMatch = (sites[s.key] && sites[s.key].rows || []).some(function (r) {
+        return normalizeSearchText(get(r, 'channel') || '').indexOf(q) > -1;
+      });
+      if (siteIndex === 0) pushUnique(startsWithSite, s);
+      else if (siteIndex > 0) pushUnique(containsSite, s);
+      else if (cameraMatch) pushUnique(containsCamera, s);
+      else if (siMatch) pushUnique(matchesSI, s);
+    });
+    return startsWithSite.concat(containsSite, containsCamera, matchesSI);
+  }
+  searchClearBtn.addEventListener('click', clearSearch);
   searchInput.addEventListener('input', function () {
+    syncSearchClear();
     var m = matchSites(searchInput.value).slice(0, 8);
     if (!m.length) { suggestPanel.classList.remove('open'); suggestPanel.innerHTML = ''; return; }
     suggestPanel.innerHTML = m.map(function (s) {
@@ -397,8 +435,25 @@
   function runSearch(query, keepChecks) {
     suggestPanel.classList.remove('open');
     lastQuery = query;
+    var q = normalizeSearchText(query || '').trim();
     var matches = matchSites(query);
     if (!matches.length) { $('emptyQuery').textContent = query; showView('empty'); return; }
+    if (q) {
+      var cameraSiteMatch = null;
+      siteList.forEach(function (s) {
+        if (!sites[s.key]) return;
+        var matchRow = (sites[s.key].rows || []).find(function (r) {
+          var channelText = normalizeSearchText(get(r, 'channel') || '');
+          var idText = normalizeSearchText(get(r, 'id') || '');
+          return channelText.indexOf(q) > -1 || idText.indexOf(q) > -1;
+        });
+        if (matchRow && !cameraSiteMatch) cameraSiteMatch = s.key;
+      });
+      if (cameraSiteMatch && !keepChecks) {
+        openSite(cameraSiteMatch, q);
+        return;
+      }
+    }
     if (matches.length === 1 && !keepChecks) { openSite(matches[0].key); return; }
     resultMatches = matches;
     if (!keepChecks) { resultChecked = {}; matches.forEach(function (s) { resultChecked[s.key] = true; }); }
@@ -452,9 +507,9 @@
   /* ------------------------------------------------------------------ */
   /* Site dashboard                                                      */
   /* ------------------------------------------------------------------ */
-  function openSite(key) {
+  function openSite(key, cameraSearch) {
     if (!sites[key]) return;
-    currentSiteKey = key; currentStatusFilter = 'all';
+    currentSiteKey = key; currentStatusFilter = 'all'; currentCameraSearch = cameraSearch || '';
     suggestPanel.classList.remove('open');
     searchInput.value = sites[key].name;
     renderSiteDashboard(); showView('site'); window.scrollTo(0, 0);
@@ -523,7 +578,13 @@
 
   function renderCameraTable() {
     var s = sites[currentSiteKey], canEdit = canEditCameras();
+    var q = currentCameraSearch ? currentCameraSearch.trim() : '';
     var rows = s.rows.filter(function (r) {
+      var channelText = normalizeSearchText(get(r, 'channel') || '');
+      var idText = normalizeSearchText(get(r, 'id') || '');
+      if (q) {
+        if (channelText.indexOf(q) === -1 && idText.indexOf(q) === -1) return false;
+      }
       if (currentStatusFilter === 'all') return true;
       if (currentStatusFilter === 'PendingCheck') return siState(r).key === 'pending';
       return get(r, 'status') === currentStatusFilter;
@@ -545,7 +606,7 @@
       var rej = latestRejection(r), r2 = '<span style="color:var(--text-faint);">&mdash;</span>';
       if (rej) r2 = '<div class="si-cell">' + issueTags(rej.issues) + (rej.note ? '<span class="si-note">"' + esc(rej.note) + '"</span>' : '') + '<span class="si-meta">' + fmt(rej.t) + (rej.by ? ' · ' + esc(rej.by) : '') + '</span></div>';
 
-      return '<tr><td>' + esc(get(r, 'channel')) + '</td>' +
+      return '<tr><td>' + esc(maskIpInText(get(r, 'channel'))) + '</td>' +
         '<td><span class="badge ' + (st === 'OK' ? 'ok' : st === 'Needs Fix' ? 'warn' : 'neutral') + '"><span class="dot"></span>' + esc(st) + '</span></td>' +
         '<td>' + si + '</td><td>' + esc(get(r, 'chCategory')) + '</td><td>' + esc(get(r, 'camType')) + '</td>' +
         '<td class="mono">' + esc(get(r, 'model')) + '</td><td class="mono">' + esc(get(r, 'fw')) + '</td>' +
@@ -906,7 +967,7 @@
       remarks[slot] += (remarks[slot] ? '\n' : '') + text;
       remarkDates[slot] += (remarkDates[slot] ? '\n' : '') + excelDate(item.t);
     });
-    return [get(r, 'id'), '', get(r, 'channel'), get(r, 'status') === 'OK' ? 'OK' : '', c[0], c[1], c[2], c[3], excelDate(verified.length ? verified[verified.length - 1].t : ''), remarks[0], remarkDates[0], remarks[1], remarkDates[1], remarks[2], remarkDates[2], '', get(r, 'chCategory'), get(r, 'camType'), get(r, 'fw'), '', get(r, 'model'), get(r, 'lon'), get(r, 'lat'), get(r, 'swVer'), get(r, 'organization'), get(r, 'integrator'), get(r, 'siContactName'), get(r, 'siContactMobile'), get(r, 'siContactEmail')];
+    return [get(r, 'id'), '', maskIpInText(get(r, 'channel')), get(r, 'status') === 'OK' ? 'OK' : '', c[0], c[1], c[2], c[3], excelDate(verified.length ? verified[verified.length - 1].t : ''), remarks[0], remarkDates[0], remarks[1], remarkDates[1], remarks[2], remarkDates[2], '', get(r, 'chCategory'), get(r, 'camType'), get(r, 'fw'), '', get(r, 'model'), get(r, 'lon'), get(r, 'lat'), get(r, 'swVer'), get(r, 'organization'), get(r, 'integrator'), get(r, 'siContactName'), get(r, 'siContactMobile'), get(r, 'siContactEmail')];
   }
   function loadSheetJS() {
     return new Promise(function (resolve, reject) {
@@ -981,11 +1042,12 @@
     var statusClass = currentStatus === 'OK' ? 'status-ok' : (currentStatus === 'Needs Fix' ? 'status-needs-fix' : 'status-neutral');
     var workflowLabel = currentState.key === 'pending' ? 'Waiting Confirmation' : currentState.label;
     var workflowClass = currentState.key === 'pending' ? 'status-waiting' : (currentState.key === 'verified' ? 'status-ok' : (currentState.key === 'reopened' ? 'status-needs-fix' : 'status-neutral'));
-    return '<article class="camera"><h3>' + esc(get(row, 'channel') || 'Unnamed camera') + '</h3>' +
+    return '<article class="camera"><h3>' + esc(maskIpInText(get(row, 'channel') || 'Unnamed camera')) + '</h3>' +
       '<div class="facts"><span class="fact-id"><b>Camera ID</b> ' + esc(get(row, 'id')) + '</span>' +
       '<span class="fact-model"><b>Type / model</b> ' + esc([get(row, 'camType'), get(row, 'model')].filter(Boolean).join(' / ') || '—') + '</span>' +
       '<span class="fact-status"><b>Current status</b> <span class="status-badge ' + statusClass + '">' + esc(currentStatus) + '</span></span>' +
       '<span class="fact-workflow"><b>SI workflow</b> <span class="status-badge ' + workflowClass + '">' + esc(workflowLabel) + '</span></span>' +
+      '<span class="fact-firmware"><b>IP</b> ' + esc(formatMaskedIp(get(row, 'ip'))) + '</span>' +
       '<span class="fact-firmware"><b>Firmware</b> ' + esc(get(row, 'fw') || '—') + '</span></div>' +
       '<div class="issues"><b>Current issues:</b> ' + esc(issues.length ? issues.join(', ') : 'None') + '</div>' +
       '<h4>Update history</h4><ol>' + historyHtml + '</ol></article>';
